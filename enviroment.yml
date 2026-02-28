@@ -1,0 +1,25 @@
+name: kan_mlp_comparison
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia
+dependencies:
+  - python=3.12
+  - pytorch
+  - torchvision
+  - torchaudio
+  - scikit-learn
+  - pandas
+  - numpy
+  - scipy
+  - matplotlib
+  - seaborn
+  - jupyterlab
+  - ipykernel
+  - optuna
+  - tqdm
+  - pip
+  - pip:
+    - pykan
+    - baycomp
+    - ucimlrepo

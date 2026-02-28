@@ -1,0 +1,14 @@
+# Zbiory danych i wyniki
+data/
+results/
+
+# Środowisko Pythona i pliki tymczasowe
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+
+# Jeśli w przyszłości utworzyłbyś lokalne środowisko venv/conda w folderze
+env/
+venv/
+.conda/
