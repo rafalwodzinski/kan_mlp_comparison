@@ -19,3 +19,6 @@ jupyter
 notebook
 matplotlib
 seaborn
+
+# --- Dane ---
+ucimlrepo
