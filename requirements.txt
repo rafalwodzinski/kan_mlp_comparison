@@ -1,0 +1,21 @@
+# --- Rdzeń Deep Learningu ---
+torch>=2.0.0
+torchvision
+
+# --- Przetwarzanie danych i metryki ---
+numpy
+pandas
+scikit-learn
+
+# --- Śledzenie eksperymentów ---
+mlflow
+
+# --- Statystyka i interpretowalność ---
+scipy
+shap
+
+# --- Notatniki Jupyter i Wizualizacja ---
+jupyter
+notebook
+matplotlib
+seaborn

@@ -1,14 +1,34 @@
-# Zbiory danych i wyniki
-data/
-results/
-
-# Środowisko Pythona i pliki tymczasowe
-__pycache__/
-*.pyc
-.ipynb_checkpoints/
-.DS_Store
-
-# Jeśli w przyszłości utworzyłbyś lokalne środowisko venv/conda w folderze
-env/
+# Środowiska wirtualne
 venv/
-.conda/
+.venv/
+env/
+
+# Pamięć podręczna Pythona i pliki skompilowane
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Katalogi z danymi (Zabezpieczenie przed komitowaniem danych)
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# MLflow, Weights & Biases i inne logi
+mlruns/
+wandb/
+*.log
+checkpoints/
+saved_models/
+
+# Konfiguracje IDE (VS Code, PyCharm itp.)
+.vscode/
+.idea/
+
+# Pliki systemowe
+.DS_Store
+Thumbs.db
