@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-import mlflow
 import numpy as np
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import sys
 import os
 
@@ -14,7 +13,7 @@ from evaluation.metrics import MedicalMetricsEvaluator
 class TabularTrainer:
     """
     Modularna klasa treningowa dla modeli KAN i MLP.
-    Zintegrowana z MLflow oraz zaawansowanym systemem metryk medycznych.
+    Wersja 'Lite' - bez zależności od MLflow. Wypisuje logi do konsoli.
     """
     def __init__(
         self, 
@@ -32,8 +31,8 @@ class TabularTrainer:
         self.is_binary = is_binary
         self.experiment_name = experiment_name
         
-        # Inicjalizacja naszego autorskiego ewaluatora
         self.evaluator = MedicalMetricsEvaluator(is_binary=self.is_binary)
+        self.last_confusion_matrix = None
 
     def train_epoch(self, dataloader: DataLoader) -> float:
         """Przeprowadza jedną epokę treningową."""
@@ -70,10 +69,8 @@ class TabularTrainer:
                 X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
                 logits = self.model(X_batch)
                 
-                # Obliczanie straty (Loss) i prawdopodobieństw
                 if self.is_binary:
                     logits_squeezed = logits.squeeze()
-                    # Zabezpieczenie przed batch_size = 1
                     if logits_squeezed.dim() == 0:
                         logits_squeezed = logits_squeezed.unsqueeze(0)
                         
@@ -85,47 +82,38 @@ class TabularTrainer:
                 
                 total_loss += loss.item()
                 
-                # Przesłanie danych na CPU w celu przetworzenia przez scikit-learn
                 all_preds.append(probs.cpu().numpy())
                 all_trues.append(y_batch.cpu().numpy())
                 
-        # Konkatenacja wyników z całej epoki
         y_prob_all = np.concatenate(all_preds, axis=0)
         y_true_all = np.concatenate(all_trues, axis=0)
         
-        # Obliczenie zaawansowanych metryk (AUROC, MCC, F1 itp.)
         metrics = self.evaluator.calculate_metrics(y_true_all, y_prob_all)
         metrics["loss"] = total_loss / len(dataloader)
         
-        # Zapisujemy również macierz pomyłek z ostatniej ewaluacji
         self.last_confusion_matrix = self.evaluator.get_confusion_matrix(y_true_all, y_prob_all)
                 
         return metrics
 
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int, run_params: dict):
-        """Główna pętla treningowa z precyzyjnym logowaniem do MLflow."""
-        mlflow.set_experiment(self.experiment_name)
+        """Główna pętla treningowa (czysty PyTorch + print)."""
+        print(f"\n[{self.experiment_name}] Rozpoczęcie treningu...")
         
-        with mlflow.start_run():
-            mlflow.log_params(run_params)
+        for epoch in range(epochs):
+            train_loss = self.train_epoch(train_loader)
+            val_metrics = self.evaluate(val_loader)
             
-            for epoch in range(epochs):
-                train_loss = self.train_epoch(train_loader)
-                val_metrics = self.evaluate(val_loader)
-                
-                # Logowanie straty treningowej
-                mlflow.log_metric("train_loss", train_loss, step=epoch)
-                
-                # Logowanie wszystkich metryk walidacyjnych dynamicznie
-                for metric_name, metric_value in val_metrics.items():
-                    mlflow.log_metric(f"val_{metric_name}", metric_value, step=epoch)
-                
-                # Wypisywanie logów w konsoli (skrócone dla czytelności)
-                print(f"Epoch {epoch+1:03d}/{epochs} | Train Loss: {train_loss:.4f} | "
-                      f"Val Loss: {val_metrics['loss']:.4f} | Val MCC: {val_metrics['mcc']:.4f} | "
-                      f"Val AUROC: {val_metrics['auroc']:.4f}")
+            # Wypisywanie logów w konsoli
+            print(f"Epoch {epoch+1:03d}/{epochs} | Train Loss: {train_loss:.4f} | "
+                  f"Val Loss: {val_metrics['loss']:.4f} | Val MCC: {val_metrics['mcc']:.4f} | "
+                  f"Val AUROC: {val_metrics['auroc']:.4f}")
+        
+        # Po zakończeniu treningu zapisujemy wagi modelu i macierz pomyłek na dysk
+        weights_path = f"{self.experiment_name}_weights.pth"
+        cm_path = f"{self.experiment_name}_confusion_matrix.csv"
+        
+        torch.save(self.model.state_dict(), weights_path)
+        if self.last_confusion_matrix is not None:
+            np.savetxt(cm_path, self.last_confusion_matrix, delimiter=",", fmt='%d')
             
-            # Po zakończeniu treningu zapisujemy model oraz macierz pomyłek jako logi do MLflow
-            mlflow.pytorch.log_model(self.model, "model")
-            np.savetxt("confusion_matrix.csv", self.last_confusion_matrix, delimiter=",")
-            mlflow.log_artifact("confusion_matrix.csv")
+        print(f"[{self.experiment_name}] Trening zakończony. Zapisano wagi do {weights_path}")
