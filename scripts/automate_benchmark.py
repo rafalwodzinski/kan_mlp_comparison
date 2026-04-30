@@ -17,12 +17,12 @@ from src.models.mlp import StandardMLP
 from src.models.kan_variants.tab_kan import TabKAN
 from src.models.kan_variants.fast_kan import FastKAN
 from src.models.kan_variants.cheby_kan import ChebyKAN
-from src.models.kan_variants.jacobi_kan import Jacobi_KAN
-from src.models.kan_variants.legendre_kan import Legendre_KAN
+from src.models.kan_variants.jacobi_kan import JacobiKAN
+from src.models.kan_variants.legendre_kan import LegendreKAN
 from src.models.kan_variants.gram_kan import GramKAN
 from src.models.kan_variants.taylor_kan import TaylorKAN
 from src.models.kan_variants.wav_kan import WavKAN
-from src.models.kan_variants.rel_kan import ReLUKAN
+from src.models.kan_variants.relu_kan import ReLUKAN
 
 @dataclass
 class ExperimentArgs:
@@ -52,8 +52,8 @@ def main():
         "TabKAN": TabKAN,
         "FastKAN": FastKAN,
         "ChebyKAN": ChebyKAN,
-        "JacobiKAN": Jacobi_KAN,
-        "LegendreKAN": Legendre_KAN,
+        "JacobiKAN": JacobiKAN,
+        "LegendreKAN": LegendreKAN,
         "GramKAN": GramKAN,
         "TaylorKAN": TaylorKAN,
         "WavKAN": WavKAN,
