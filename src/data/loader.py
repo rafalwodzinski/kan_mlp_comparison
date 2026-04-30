@@ -1,91 +1,87 @@
 import pandas as pd
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.impute import SimpleImputer
+from torch.utils.data import Dataset
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from typing import Tuple, List, Optional
+from sklearn.impute import SimpleImputer, KNNImputer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+
+# Mapowanie plików na ich kolumny docelowe (target)
+TARGET_COLS = {
+    'breast_cancer_processed.csv': 'Diagnosis',
+    'pima_diabetes_processed.csv': 'class',
+    'heart_disease_processed.csv': 'num',
+    'chronic_kidney_disease_processed.csv': 'class',
+    'parkinsons_processed.csv': 'status',
+    'cervical_cancer_processed.csv': 'Biopsy',
+    'cardiotocography_processed.csv': 'NSP'
+}
 
 class MedicalTabularDataset(Dataset):
-    """
-    Standardowy Dataset PyTorch do tabelarycznych danych medycznych.
-    """
+    """Prosty wrapper PyTorch dla przetworzonych już danych tabelarycznych (NumPy arrays)."""
     def __init__(self, X: np.ndarray, y: np.ndarray):
         self.X = torch.tensor(X, dtype=torch.float32)
-        self.y = torch.tensor(y, dtype=torch.long) # Zakładamy klasyfikację (long)
+        self.y = torch.tensor(y, dtype=torch.long)
 
-    def __len__(self) -> int:
+    def __len__(self):
         return len(self.X)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
 
-
-def prepare_dataloaders(
-    df: pd.DataFrame, 
-    target_col: str, 
-    numerical_cols: List[str], 
-    categorical_cols: Optional[List[str]] = None,
-    test_size: float = 0.2, 
-    val_size: float = 0.1,
-    batch_size: int = 32,
-    random_state: int = 42
-) -> Tuple[DataLoader, DataLoader, DataLoader, int]:
+def get_data_and_preprocessor(filepath: str, dataset_filename: str):
     """
-    Dzieli dane, przetwarza je (zapobiegając wyciekowi danych) i tworzy DataLoadery.
-    Zwraca również input_dim potrzebny do zainicjowania modelu.
+    Wczytuje surowy plik CSV, dzieli na X i y oraz buduje odpowiedni 
+    Pipeline scikit-learn do imputacji i skalowania bez wycieku danych.
     """
-    X = df.drop(columns=[target_col])
-    y = df[target_col].values
-
-    # 1. Stratified Split (Trening vs Reszta)
-    X_train, X_temp, y_train, y_temp = train_test_split(
-        X, y, test_size=(test_size + val_size), stratify=y, random_state=random_state
-    )
+    # 1. Wczytanie danych
+    df = pd.read_csv(filepath)
+    target_col = TARGET_COLS.get(dataset_filename)
     
-    # Podział Reszty na Walidację i Test
-    val_ratio_in_temp = val_size / (test_size + val_size)
-    X_val, X_test, y_val, y_test = train_test_split(
-        X_temp, y_temp, test_size=(1 - val_ratio_in_temp), stratify=y_temp, random_state=random_state
-    )
+    if target_col not in df.columns:
+        raise ValueError(f"Błąd: Nie znaleziono kolumny targetu '{target_col}' w pliku {dataset_filename}")
 
-    # 2. Definicja rurociągów transformacji (Pipelines)
-    num_pipeline = Pipeline([
-        ('imputer', SimpleImputer(strategy='median')), # Odporne na wartości odstające w medycynie
+    # 2. Specjalne reguły czyszczenia z naszej analizy EDA
+    if dataset_filename == 'cervical_cancer_processed.csv':
+        cols_to_drop = ['STDs: Time since first diagnosis', 'STDs: Time since last diagnosis']
+        df = df.drop(columns=[col for col in cols_to_drop if col in df.columns])
+
+    # 3. Podział na cechy (X) i etykiety (y)
+    y = df[target_col].values
+    X = df.drop(columns=[target_col])
+
+    # 4. Automatyczna detekcja typów kolumn
+    numeric_features = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
+    categorical_features = X.select_dtypes(include=['object', 'category']).columns.tolist()
+
+    # 5. Budowa rurociągów (Pipelines)
+    # Wybór imputera numerycznego na podstawie specyfiki zbioru
+    if dataset_filename in ['chronic_kidney_disease_processed.csv', 'cervical_cancer_processed.csv']:
+        # Zbiory z trudnymi brakami - używamy algorytmu najbliższych sąsiadów
+        num_imputer = KNNImputer(n_neighbors=5)
+    else:
+        # Zbiory czyste lub z małymi brakami - używamy odpornej na outliery mediany
+        num_imputer = SimpleImputer(strategy='median')
+
+    numeric_transformer = Pipeline(steps=[
+        ('imputer', num_imputer),
         ('scaler', StandardScaler())
     ])
-    
-    # Jeśli mamy zmienne kategoryczne, dodajemy je tutaj (np. OneHotEncoder)
-    transformers = [('num', num_pipeline, numerical_cols)]
-    if categorical_cols:
-        from sklearn.preprocessing import OneHotEncoder
-        cat_pipeline = Pipeline([
-            ('imputer', SimpleImputer(strategy='most_frequent')),
-            ('encoder', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
-        ])
-        transformers.append(('cat', cat_pipeline, categorical_cols))
 
-    preprocessor = ColumnTransformer(transformers=transformers)
+    # Transformator kategoryczny (zawsze używa mody i kodowania One-Hot)
+    categorical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='most_frequent')),
+        ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+    ])
 
-    # 3. FIT tylko na treningowym! Transform na pozostałych.
-    X_train_processed = preprocessor.fit_transform(X_train)
-    X_val_processed = preprocessor.transform(X_val)
-    X_test_processed = preprocessor.transform(X_test)
+    # 6. Złożenie w jeden główny ColumnTransformer
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numeric_transformer, numeric_features),
+            ('cat', categorical_transformer, categorical_features)
+        ],
+        remainder='drop' # Ignoruje kolumny, które nie pasują do żadnego typu (zabezpieczenie)
+    )
 
-    # Wymiar wejściowy dla sieci neuronowych
-    input_dim = X_train_processed.shape[1]
-
-    # 4. Tworzenie obiektów Dataset
-    train_dataset = MedicalTabularDataset(X_train_processed, y_train)
-    val_dataset = MedicalTabularDataset(X_val_processed, y_val)
-    test_dataset = MedicalTabularDataset(X_test_processed, y_test)
-
-    # 5. Tworzenie DataLoaderów
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-
-    return train_loader, val_loader, test_loader, input_dim
+    return X, y, preprocessors
