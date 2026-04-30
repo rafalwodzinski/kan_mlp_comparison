@@ -6,6 +6,7 @@ torchvision
 numpy
 pandas
 scikit-learn
+tqdm
 
 # --- Śledzenie eksperymentów ---
 mlflow
