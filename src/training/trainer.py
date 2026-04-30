@@ -13,7 +13,8 @@ from evaluation.metrics import MedicalMetricsEvaluator
 class TabularTrainer:
     """
     Modularna klasa treningowa dla modeli KAN i MLP.
-    Wersja 'Lite' - bez zależności od MLflow. Wypisuje logi do konsoli.
+    Wersja 'Lite' - bez zależności od MLflow. Wypisuje logi do konsoli 
+    oraz zapisuje wagi i macierz pomyłek na dysk.
     """
     def __init__(
         self, 
@@ -46,7 +47,8 @@ class TabularTrainer:
             logits = self.model(X_batch)
             
             if self.is_binary:
-                loss = self.criterion(logits.squeeze(), y_batch.float()) 
+                # BEZPIECZNE ŚCISKANIE: dim=-1 chroni przed błędem gdy batch_size = 1
+                loss = self.criterion(logits.squeeze(dim=-1), y_batch.float()) 
             else:
                 loss = self.criterion(logits, y_batch)
                 
@@ -70,10 +72,8 @@ class TabularTrainer:
                 logits = self.model(X_batch)
                 
                 if self.is_binary:
-                    logits_squeezed = logits.squeeze()
-                    if logits_squeezed.dim() == 0:
-                        logits_squeezed = logits_squeezed.unsqueeze(0)
-                        
+                    # BEZPIECZNE ŚCISKANIE (czystszy kod)
+                    logits_squeezed = logits.squeeze(dim=-1)
                     loss = self.criterion(logits_squeezed, y_batch.float())
                     probs = torch.sigmoid(logits_squeezed)
                 else:
