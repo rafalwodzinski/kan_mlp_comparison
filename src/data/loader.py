@@ -84,4 +84,4 @@ def get_data_and_preprocessor(filepath: str, dataset_filename: str):
         remainder='drop' # Ignoruje kolumny, które nie pasują do żadnego typu (zabezpieczenie)
     )
 
-    return X, y, preprocessors
+    return X, y, preprocessor
