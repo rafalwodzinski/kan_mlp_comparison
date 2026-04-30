@@ -10,7 +10,7 @@ import math
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from base import BaseTabularModel
 
-class RelKANLinear(nn.Module):
+class ReLUKANLinear(nn.Module):
     """
     Warstwa KAN wykorzystująca przesunięte funkcje ReLU jako bazę aproksymacyjną.
     Ekstremalnie szybka na architekturach GPU.
@@ -63,7 +63,7 @@ class RelKANLinear(nn.Module):
         return base_output + relu_output
 
 
-class RelKAN(BaseTabularModel):
+class ReLUKAN(BaseTabularModel):
     """
     Architektura RelKAN (ReLU KAN).
     Minimalizuje narzut obliczeniowy zachowując paradygmat aktywacji na krawędziach.
@@ -82,12 +82,12 @@ class RelKAN(BaseTabularModel):
         in_features = input_dim
         
         for h_dim in hidden_dims:
-            layers.append(RelKANLinear(in_features, h_dim, num_grids=num_grids))
+            layers.append(ReLUKANLinear(in_features, h_dim, num_grids=num_grids))
             layers.append(nn.LayerNorm(h_dim))
             in_features = h_dim
             
         # Warstwa wyjściowa
-        layers.append(RelKANLinear(in_features, output_dim, num_grids=num_grids))
+        layers.append(ReLUKANLinear(in_features, output_dim, num_grids=num_grids))
         
         self.network = nn.Sequential(*layers)
 
