@@ -75,7 +75,9 @@ class CrossValidator:
                 criterion=criterion, 
                 device=torch.device(args.device), 
                 is_binary=is_binary,
-                experiment_name=f"{dataset_name}_{args.model_name}_Fold{fold+1}"
+                dataset_name=dataset_name,
+                model_name=args.model_name,
+                fold=fold+1
             )
             
             run_params = vars(args)

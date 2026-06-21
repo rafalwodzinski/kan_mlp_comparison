@@ -53,7 +53,8 @@ def get_data_and_preprocessor(filepath: str, dataset_filename: str):
 
     # 4. Automatyczna detekcja typów kolumn
     numeric_features = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
-    categorical_features = X.select_dtypes(include=['object', 'category']).columns.tolist()
+    # Zabezpieczenie typu: chwytamy wszystkie pozostałe kolumny jako kategoryczne, by remainder='drop' nie wyrzucił danych
+    categorical_features = X.columns.difference(numeric_features).tolist()
 
     # 5. Budowa rurociągów (Pipelines)
     # Wybór imputera numerycznego na podstawie specyfiki zbioru
@@ -64,9 +65,10 @@ def get_data_and_preprocessor(filepath: str, dataset_filename: str):
         # Zbiory czyste lub z małymi brakami - używamy odpornej na outliery mediany
         num_imputer = SimpleImputer(strategy='median')
 
+    # Skalowanie przed imputacją (szczególnie ważne dla KNNImputer opartego na odległościach euklidesowych)
     numeric_transformer = Pipeline(steps=[
-        ('imputer', num_imputer),
-        ('scaler', StandardScaler())
+        ('scaler', StandardScaler()),
+        ('imputer', num_imputer)
     ])
 
     # Transformator kategoryczny (zawsze używa mody i kodowania One-Hot)

@@ -1,11 +1,11 @@
 import numpy as np
 import pandas as pd
 from scipy.stats import wilcoxon, friedmanchisquare
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 
-class StatisticalAnalyzer:
+class FrequentistEvaluator:
     """
-    Moduł do rygorystycznej oceny statystycznej wyników eksperymentów ML.
+    Moduł do rygorystycznej statystyki częstościowej wyników eksperymentów ML.
     Oparty na rekomendacjach J. Demšara (2006) dla porównywania klasyfikatorów.
     """
     def __init__(self, alpha: float = 0.05):
@@ -15,67 +15,83 @@ class StatisticalAnalyzer:
         """
         self.alpha = alpha
 
-    def run_friedman_test(self, results_df: pd.DataFrame, metric: str) -> Dict[str, float]:
+    def run_friedman_test(self, df: pd.DataFrame, metric: str = 'mcc') -> Dict[str, Any]:
         """
-        Przeprowadza nieparametryczny test Friedmana dla wielu modeli.
-        Sprawdza hipotezę zerową: "Wszystkie modele radzą sobie tak samo dobrze".
+        Przeprowadza nieparametryczny test Friedmana dla wielu modeli na podstawie dataframe'u.
         
-        Oczekiwany format results_df:
-        Indeksy: Zbiory danych (np. Breast Cancer, Diabetes)
-        Kolumny: Modele (np. StandardMLP, TabKAN)
-        Wartości: Wynik metryki (np. AUROC)
+        Args:
+            df (pd.DataFrame): Ramka danych z kolumnami m.in. 'dataset', 'model', oraz kolumną z metryką.
+            metric (str): Nazwa kolumny z metryką (np. 'mcc', 'auroc').
+            
+        Returns:
+            Dict: Wyniki testu statystycznego.
         """
+        # Obliczenie średniego wyniku per zbiór danych i per model (uśrednianie foldów przed testem Friedmana)
+        # Demšar rekomenduje porównywanie modeli na podstawie wyników ze zbiorów danych.
+        agg_df = df.groupby(['dataset', 'model'])[metric].mean().unstack()
+        
         # Pobieramy wyniki jako listę tablic dla każdego modelu
-        model_scores = [results_df[model].values for model in results_df.columns]
+        model_scores = [agg_df[model].values for model in agg_df.columns]
         
         stat, p_value = friedmanchisquare(*model_scores)
         
         return {
-            "statistic": stat,
-            "p_value": p_value,
+            "statistic": float(stat),
+            "p_value": float(p_value),
             "significant": p_value < self.alpha,
-            "conclusion": "Odrzucamy H0 - istnieje różnica między modelami" if p_value < self.alpha else "Brak podstaw do odrzucenia H0"
+            "conclusion": "Odrzucamy H0 - istnieje statystycznie istotna różnica między modelami" if p_value < self.alpha else "Brak podstaw do odrzucenia H0"
         }
 
-    def run_wilcoxon_pairwise(self, model_a_scores: np.ndarray, model_b_scores: np.ndarray) -> Dict[str, float]:
+    def run_wilcoxon_post_hoc(self, df: pd.DataFrame, baseline_model: str, competitor_models: List[str], metric: str = 'mcc') -> pd.DataFrame:
         """
-        Przeprowadza test Wilcoxona dla par powiązanych (np. porównanie KAN vs MLP na N zbiorach danych).
-        """
-        # Różnice między wynikami (dla zbadania równości)
-        differences = model_a_scores - model_b_scores
+        Przeprowadza test Wilcoxona dla par powiązanych (np. porównanie KAN vs MLP) z poprawką Holm-Bonferroni.
         
-        # Zabezpieczenie na wypadek, gdyby wyniki były identyczne (co psuje test)
-        if np.all(differences == 0):
-            return {"statistic": 0.0, "p_value": 1.0, "significant": False, "winner": "Tie"}
+        Args:
+            df (pd.DataFrame): Wyniki eksperymentów.
+            baseline_model (str): Nazwa modelu bazowego (np. 'StandardMLP').
+            competitor_models (List[str]): Lista modeli do porównania.
+            metric (str): Wybrana metryka.
             
-        stat, p_value = wilcoxon(model_a_scores, model_b_scores, zero_method='zsplit')
-        
-        winner = "Model A" if np.median(model_a_scores) > np.median(model_b_scores) else "Model B"
-        
-        return {
-            "statistic": stat,
-            "p_value": p_value,
-            "significant": p_value < self.alpha,
-            "winner": winner if p_value < self.alpha else "Tie"
-        }
-
-    def generate_pairwise_matrix(self, results_df: pd.DataFrame) -> pd.DataFrame:
+        Returns:
+            pd.DataFrame: Wyniki testów post-hoc z poprawkami p-value.
         """
-        Generuje macierz p-value dla wszystkich możliwych par modeli.
-        Przydatne do wygenerowania tabeli do artykułu naukowego.
-        """
-        models = results_df.columns
-        n_models = len(models)
-        p_matrix = pd.DataFrame(np.ones((n_models, n_models)), index=models, columns=models)
+        agg_df = df.groupby(['dataset', 'model'])[metric].mean().unstack()
+        baseline_scores = agg_df[baseline_model].values
         
-        for i in range(n_models):
-            for j in range(i + 1, n_models):
-                model_a = models[i]
-                model_b = models[j]
+        results = []
+        for competitor in competitor_models:
+            if competitor not in agg_df.columns:
+                continue
                 
-                res = self.run_wilcoxon_pairwise(results_df[model_a].values, results_df[model_b].values)
+            comp_scores = agg_df[competitor].values
+            differences = comp_scores - baseline_scores
+            
+            if np.all(differences == 0):
+                stat, p_val = 0.0, 1.0
+            else:
+                stat, p_val = wilcoxon(baseline_scores, comp_scores, zero_method='zsplit')
                 
-                p_matrix.loc[model_a, model_b] = res["p_value"]
-                p_matrix.loc[model_b, model_a] = res["p_value"] # Macierz symetryczna
+            results.append({
+                "Model A (Baseline)": baseline_model,
+                "Model B": competitor,
+                "Statistic": stat,
+                "Unadjusted p-value": p_val,
+                "Winner": competitor if np.median(comp_scores) > np.median(baseline_scores) else baseline_model
+            })
+            
+        res_df = pd.DataFrame(results)
+        
+        if not res_df.empty:
+            # Poprawka Holm-Bonferroni
+            res_df = res_df.sort_values("Unadjusted p-value").reset_index(drop=True)
+            m = len(res_df)
+            holm_p = [min(1.0, res_df.loc[i, "Unadjusted p-value"] * (m - i)) for i in range(m)]
+            
+            # Gwarancja niemalejącej sekwencji
+            for i in range(1, m):
+                holm_p[i] = max(holm_p[i], holm_p[i-1])
                 
-        return p_matrix
+            res_df["Holm-Bonferroni p-value"] = holm_p
+            res_df["Significant"] = res_df["Holm-Bonferroni p-value"] < self.alpha
+            
+        return res_df

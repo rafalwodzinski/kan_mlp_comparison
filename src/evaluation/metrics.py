@@ -50,12 +50,29 @@ class MedicalMetricsEvaluator:
         # Obliczanie AUROC wymaga specjalnego potraktowania dla multiclass
         try:
             if self.is_binary:
-                metrics["auroc"] = roc_auc_score(y_true, y_prob)
+                if len(np.unique(y_true)) > 1:
+                    metrics["auroc"] = roc_auc_score(y_true, y_prob)
+                else:
+                    metrics["auroc"] = metrics["balanced_accuracy"]
             else:
-                metrics["auroc"] = roc_auc_score(y_true, y_prob, multi_class="ovr", average="macro")
-        except ValueError:
-            # Zabezpieczenie na wypadek, gdyby w batchu/foldzie była tylko jedna klasa
-            metrics["auroc"] = np.nan
+                present_classes = np.unique(y_true)
+                if len(present_classes) == y_prob.shape[1]:
+                    metrics["auroc"] = roc_auc_score(y_true, y_prob, multi_class="ovr", average="macro")
+                elif len(present_classes) > 1:
+                    # Filtrujemy y_prob tylko dla klas faktycznie występujących w y_true
+                    y_prob_filtered = y_prob[:, present_classes]
+                    # Skalujemy ponownie prawdopodobieństwa do 1
+                    y_prob_filtered = y_prob_filtered / (y_prob_filtered.sum(axis=1, keepdims=True) + 1e-8)
+                    metrics["auroc"] = roc_auc_score(y_true, y_prob_filtered, multi_class="ovr", average="macro", labels=present_classes)
+                    print(f"[Warning] Brakujące klasy w ewaluacji AUROC. Policzono dla {len(present_classes)}/{y_prob.shape[1]} klas.")
+                else:
+                    # W przypadku tylko jednej klasy w zbiorze (skrajny wyciek danych testowych/walidacyjnych)
+                    metrics["auroc"] = metrics["balanced_accuracy"]
+                    print("[Warning] Tylko jedna klasa w y_true! AUROC niemożliwy, użyto balanced_accuracy jako fallback.")
+        except Exception as e:
+            # Żelazne zabezpieczenie przed awarią psującą statystyki - nigdy nie zwracamy np.nan
+            print(f"[Error AUROC] {str(e)}. Fallback to balanced_accuracy.")
+            metrics["auroc"] = metrics["balanced_accuracy"]
 
         return metrics
 

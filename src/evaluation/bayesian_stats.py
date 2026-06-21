@@ -1,79 +1,88 @@
 import numpy as np
 import pandas as pd
 from scipy import stats
-import matplotlib.pyplot as plt
-from typing import Tuple, Dict
+from typing import Dict
 
-class BayesianComparator:
+class BayesianEvaluator:
     """
-    Implementacja Bayesian Correlated t-test do porównywania modeli w CV.
-    Pozwala na wyznaczenie prawdopodobieństwa wygranej oraz ROPE.
+    Implementacja Bayesian Correlated t-test do rygorystycznego porównywania modeli
+    na wynikach z walidacji krzyżowej (k-Fold CV).
+    Korzysta z poprawki Benavoli et al. (2017) chroniącej przed sztucznym zawyżaniem pewności.
     """
-    def __init__(self, rope_interval: float = 0.01):
+    def __init__(self, rope_interval: float = 0.01, k_folds: int = 5):
         """
         Args:
-            rope_interval (float): Szerokość przedziału praktycznej równoważności (np. 0.01 dla 1%).
+            rope_interval (float): Szerokość przedziału praktycznej równoważności (ROPE).
+                                   Np. 0.01 to 1% różnicy.
+            k_folds (int): Liczba foldów w cross-walidacji.
         """
         self.rope_interval = rope_interval
+        self.k_folds = k_folds
 
-    def compare_models(self, scores_a: np.ndarray, scores_b: np.ndarray, k_folds: int) -> Dict[str, float]:
+    def bayesian_correlated_ttest(self, df: pd.DataFrame, model_a: str, model_b: str, metric: str = 'mcc') -> Dict[str, float]:
         """
-        Oblicza prawdopodobieństwa bayesowskie na podstawie różnic wyników w foldach.
+        Wykonuje Bayesian Correlated t-test używając wyników na poziomie FOLDÓW.
         
-        Używamy poprawki na korelację: 1/k_folds.
+        Args:
+            df (pd.DataFrame): Dataframe z wynikami (wymagane: dataset, model, fold, <metric>).
+            model_a (str): Pierwszy model.
+            model_b (str): Drugi model.
+            metric (str): Nazwa analizowanej metryki.
+            
+        Returns:
+            Dict: Prawdopodobieństwa scenariuszy A>B, B>A oraz Remis (ROPE).
         """
+        # Filtrujemy dane dla obu modeli i upewniamy się, że są równe ilości obserwacji
+        df_a = df[df['model'] == model_a].sort_values(['dataset', 'fold'])
+        df_b = df[df['model'] == model_b].sort_values(['dataset', 'fold'])
+        
+        if len(df_a) == 0 or len(df_b) == 0:
+            raise ValueError("Brak wyników dla podanych modeli.")
+            
+        scores_a = df_a[metric].values
+        scores_b = df_b[metric].values
+        
+        if len(scores_a) != len(scores_b):
+            raise ValueError("Różna liczba wyników dla modeli (niekompletne cross-walidacje?).")
+            
         differences = scores_a - scores_b
         n = len(differences)
         mean_diff = np.mean(differences)
         std_diff = np.std(differences, ddof=1)
         
-        # Korekta Benavoli et al. (2017) dla skorelowanych prób w CV
-        # rho = 1 / k_folds (zakładając standardowy podział CV)
-        rho = 1 / k_folds
+        # W przypadku identycznych wyników (odchylenie standardowe = 0)
+        if std_diff == 0:
+            if mean_diff > self.rope_interval:
+                return {"prob_A_better": 1.0, "prob_B_better": 0.0, "prob_ROPE": 0.0, "mean_diff": mean_diff}
+            elif mean_diff < -self.rope_interval:
+                return {"prob_A_better": 0.0, "prob_B_better": 1.0, "prob_ROPE": 0.0, "mean_diff": mean_diff}
+            else:
+                return {"prob_A_better": 0.0, "prob_B_better": 0.0, "prob_ROPE": 1.0, "mean_diff": mean_diff}
+        
+        # Korekta Benavoli et al. (2017) dla skorelowanych prób w k-Fold CV.
+        # Niezależność prób jest naruszona przez powielanie zbioru treningowego w CV.
+        rho = 1 / self.k_folds
+        
+        # Nowe odchylenie standardowe uwzględniające korelację
         adjusted_std = std_diff * np.sqrt((1/n) + (rho / (1 - rho)))
         
         # Stopnie swobody
-        df = n - 1
+        df_t = n - 1
         
-        # Obliczanie prawdopodobieństw przy użyciu dystrybuanty rozkładu t-Studenta
-        # P(Model B > Model A + rope)
-        prob_b_wins = stats.t.cdf(-self.rope_interval, df, loc=mean_diff, scale=adjusted_std)
+        # Całkujemy gęstość rozkładu t-Studenta w odpowiednich przedziałach
+        # P(Różnica mieści się w ROPE): P(-rope < diff < rope)
+        prob_rope = stats.t.cdf(self.rope_interval, df_t, loc=mean_diff, scale=adjusted_std) - \
+                    stats.t.cdf(-self.rope_interval, df_t, loc=mean_diff, scale=adjusted_std)
         
-        # P(Model A > Model B + rope)
-        prob_a_wins = 1 - stats.t.cdf(self.rope_interval, df, loc=mean_diff, scale=adjusted_std)
+        # P(Model A > Model B + rope): P(diff > rope)
+        prob_a_wins = 1 - stats.t.cdf(self.rope_interval, df_t, loc=mean_diff, scale=adjusted_std)
         
-        # P(Różnica mieści się w ROPE)
-        prob_rope = 1 - prob_a_wins - prob_b_wins
+        # P(Model B > Model A + rope): P(diff < -rope)
+        prob_b_wins = stats.t.cdf(-self.rope_interval, df_t, loc=mean_diff, scale=adjusted_std)
         
         return {
-            "prob_a_better": float(prob_a_wins),
-            "prob_b_better": float(prob_b_wins),
-            "prob_rope": float(prob_rope),
+            "prob_A_better": float(prob_a_wins),
+            "prob_B_better": float(prob_b_wins),
+            "prob_ROPE": float(prob_rope),
             "mean_diff": float(mean_diff)
         }
-
-    def plot_posterior(self, scores_a: np.ndarray, scores_b: np.ndarray, k_folds: int, names: Tuple[str, str]):
-        """
-        Wizualizuje rozkład a posteriori różnicy między modelami.
-        """
-        diffs = scores_a - scores_b
-        n = len(diffs)
-        mean_diff = np.mean(diffs)
-        std_diff = np.std(diffs, ddof=1)
-        rho = 1 / k_folds
-        adjusted_std = std_diff * np.sqrt((1/n) + (rho / (1 - rho)))
-        
-        x = np.linspace(mean_diff - 4*adjusted_std, mean_diff + 4*adjusted_std, 100)
-        y = stats.t.pdf(x, n-1, loc=mean_diff, scale=adjusted_std)
-        
-        plt.figure(figsize=(10, 6))
-        plt.plot(x, y, label='Posterior Difference')
-        plt.axvspan(-self.rope_interval, self.rope_interval, color='gray', alpha=0.2, label='ROPE')
-        plt.axvline(0, color='red', linestyle='--', alpha=0.5)
-        
-        plt.title(f"Bayesian Analysis: {names[0]} vs {names[1]}")
-        plt.xlabel(f"Difference in Metric ({names[0]} - {names[1]})")
-        plt.ylabel("Probability Density")
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        plt.show()

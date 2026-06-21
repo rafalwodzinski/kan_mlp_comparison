@@ -36,17 +36,15 @@ class ExperimentArgs:
 def main():
     # 1. Definicja przestrzeni badawczej
     DATASETS_DIR = "data/processed/"
-    datasets = [
-        "breast_cancer_processed.csv",
-        "heart_disease_processed.csv",
-        "chronic_kidney_disease_processed.csv",
-        "parkinsons_processed.csv",
-        "cervical_cancer_processed.csv",
-        "cardiotocography_processed.csv",
-        "pima_diabetes_processed.csv"
-    ]
+    # Dynamiczne wyszukiwanie zbiorów danych
+    if os.path.exists(DATASETS_DIR):
+        datasets = [f for f in os.listdir(DATASETS_DIR) if f.endswith('_processed.csv')]
+    else:
+        datasets = []
+        print(f"Ostrzeżenie: Folder {DATASETS_DIR} nie istnieje. Uruchom preprocessor.py najpierw.")
     
     # Kompletna lista 10 planowanych modeli (MLP + 9 wariantów KAN)
+    # Na ten moment ładujemy wszystkie gotowe modele:
     MODELS = {
         "StandardMLP": StandardMLP,
         "TabKAN": TabKAN,
