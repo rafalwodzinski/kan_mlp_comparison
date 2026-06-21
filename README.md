@@ -5,7 +5,7 @@
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-1.3%2B-f7931e?style=for-the-badge&logo=scikit-learn&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
-## Cel Projektu
+## Cel projektu
 
 Ten projekt przeprowadza benchmark, aby odpowiedzieć na palące pytanie we współczesnym uczeniu głębokim (Deep Learning): **Czy nowo wprowadzone Sieci Kołmogorowa-Arnolda (KAN) i ich warianty przewyższają klasyczne Wielowarstwowe Perceptrony (MLP) na medycznych zbiorach danych tabelarycznych?**
 
