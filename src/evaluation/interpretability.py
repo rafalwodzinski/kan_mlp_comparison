@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import shap
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -16,29 +15,49 @@ class ModelInterpreter:
         self.device = device
         self.model.eval()
 
-    def explain_with_shap(self, background_data: torch.Tensor, test_data: torch.Tensor, feature_names: List[str]):
-        """
-        Generuje i wyświetla wartości SHAP dla modeli typu czarna skrzynka (MLP).
-        Wykorzystuje DeepExplainer zoptymalizowany pod sieci neuronowe.
-        """
-        background_data = background_data.to(self.device)
-        test_data = test_data.to(self.device)
 
-        # DeepExplainer wymaga funkcji, która zwraca logity
-        explainer = shap.DeepExplainer(self.model, background_data)
+
+    def permutation_feature_importance(self, X: torch.Tensor, y: torch.Tensor, feature_names: List[str], metric_fn, n_repeats: int = 5) -> np.ndarray:
+        """
+        Oblicza Permutation Feature Importance w sposób niezależny od modelu (model-agnostic).
+        Działa na tensorach PyTorch i wspiera klasyfikację binarną lub wieloklasową.
+        """
+        self.model.eval()
+        X = X.to(self.device)
+        y = y.to(self.device).cpu().numpy()
         
-        # Obliczenie wartości SHAP
-        shap_values = explainer.shap_values(test_data)
+        # Obliczenie bazowego wyniku (baseline)
+        with torch.no_grad():
+            baseline_outputs = self.model(X)
+            if baseline_outputs.shape[1] == 1:
+                baseline_preds = (torch.sigmoid(baseline_outputs).squeeze() > 0.5).cpu().numpy().astype(int)
+            else:
+                baseline_preds = torch.argmax(baseline_outputs, dim=1).cpu().numpy()
         
-        # Wizualizacja globalnego wpływu cech (Summary Plot)
-        print("Generowanie wykresu SHAP Summary Plot...")
-        shap.summary_plot(
-            shap_values, 
-            features=test_data.cpu().numpy(), 
-            feature_names=feature_names,
-            show=True
-        )
-        return shap_values
+        baseline_score = metric_fn(y, baseline_preds)
+        
+        importances = np.zeros(X.shape[1])
+        
+        for i in range(X.shape[1]):
+            scores_permuted = []
+            for _ in range(n_repeats):
+                X_permuted = X.clone()
+                # Permutacja i-tej kolumny
+                idx = torch.randperm(X.shape[0])
+                X_permuted[:, i] = X_permuted[idx, i]
+                
+                with torch.no_grad():
+                    outputs = self.model(X_permuted)
+                    if outputs.shape[1] == 1:
+                        preds = (torch.sigmoid(outputs).squeeze() > 0.5).cpu().numpy().astype(int)
+                    else:
+                        preds = torch.argmax(outputs, dim=1).cpu().numpy()
+                
+                scores_permuted.append(metric_fn(y, preds))
+            
+            importances[i] = baseline_score - np.mean(scores_permuted)
+            
+        return importances
 
     def extract_kan_activations(self, data: torch.Tensor, layer_index: int = 0) -> Dict[str, np.ndarray]:
         """
