@@ -1,0 +1,8 @@
+Model A (Baseline),Model B,Statistic,Unadjusted p-value,Winner,Holm-Bonferroni p-value,Significant,dataset
+StandardMLP,ReLUKAN,0.0,1.0,ReLUKAN,1.0,False,breast_cancer
+StandardMLP,JacobiKAN,0.0,1.0,JacobiKAN,1.0,False,cardiotocography
+StandardMLP,WavKAN,0.0,1.0,StandardMLP,1.0,False,cervical_cancer
+StandardMLP,TaylorKAN,0.0,1.0,TaylorKAN,1.0,False,chronic_kidney_disease
+StandardMLP,TaylorKAN,0.0,1.0,TaylorKAN,1.0,False,heart_disease
+StandardMLP,WavKAN,0.0,1.0,WavKAN,1.0,False,parkinsons
+StandardMLP,WavKAN,0.0,1.0,StandardMLP,1.0,False,pima_diabetes
