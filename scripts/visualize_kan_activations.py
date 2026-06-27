@@ -1,3 +1,10 @@
+"""
+Moduł odpowiedzialny za wizualizację jedno-wymiarowych funkcji aktywacji (Edge Activation Functions) 
+w sieciach z rodziny KAN. Pozwala 'zajrzeć pod maskę' modelu i zrozumieć, 
+jakie specyficzne anomalie kliniczne są wykrywane przez model (XAI - Explainable AI).
+Skrypt operuje na modelu WavKAN wytrenowanym na zbiorze Parkinson's Disease.
+"""
+
 import os
 import sys
 import torch
@@ -5,19 +12,37 @@ import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Dodanie ścieżki, aby Python widział folder src
+# Dodanie ścieżki, aby Python widział folder src i jego moduły
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.data.loader import get_data_and_preprocessor
 from src.models.kan_variants.wav_kan import WavKAN
 
 def mexican_hat_wavelet(x: torch.Tensor) -> torch.Tensor:
+    """
+    Oblicza matematyczną wartość funkcji falki typu 'Meksykański Kapelusz'
+    (drugiej pochodnej funkcji Gaussa).
+    
+    Argumenty:
+        x (torch.Tensor): Znormalizowany wektor wejściowy.
+    Zwraca:
+        torch.Tensor: Wartości po przejściu przez falkę.
+    """
     x_sq = x ** 2
     return (1.0 - x_sq) * torch.exp(-0.5 * x_sq)
 
 def main():
+    """
+    Główna funkcja wykonawcza odpowiedzialna za:
+    1. Wczytanie zbioru danych z Parkinson's Disease w celu odzyskania metadanych cech.
+    2. Załadowanie wag pierwszej warstwy modelu WavKAN (Fold 1).
+    3. Wybór cech (najbardziej "aktywnych" według sumy wag na falkach).
+    4. Analityczne odtworzenie 1D funkcji na krawędziach dla tych cech.
+    5. Zapisanie macierzy subplotów do pliku wizualizacji.
+    """
     print("Generowanie wizualizacji funkcji aktywacji WavKAN (Zbiór Parkinson's)...")
-    device = torch.device("cpu") # Wizualizację bezpiecznie robimy na CPU
+    # Wizualizację bezpiecznie i najszybciej robimy lokalnie na procesorze (CPU)
+    device = torch.device("cpu")
     
     data_path = "data/processed/parkinsons_processed.csv"
     dataset_filename = "parkinsons_processed.csv"
@@ -26,10 +51,11 @@ def main():
         print(f"Błąd: Nie znaleziono pliku {data_path}.")
         return
 
-    # 1. Pozyskanie nazw cech i wymiarów
+    # 1. Pozyskanie nazw cech i wymiarów wejściowych
     X_raw, y_raw, preprocessor = get_data_and_preprocessor(data_path, dataset_filename)
     preprocessor.fit(X_raw)
     feature_names = preprocessor.get_feature_names_out()
+    # Usunięcie zbędnych przedrostków z ColumnTransformera (np. 'num__')
     feature_names = [name.split('__')[-1] for name in feature_names]
     
     input_dim = len(feature_names)
@@ -37,7 +63,7 @@ def main():
     is_binary = (num_classes == 2)
     output_dim = 1 if is_binary else num_classes
     
-    # 2. Inicjalizacja modelu i wczytanie wag
+    # 2. Inicjalizacja modelu WavKAN i wczytanie pretrenowanych wag
     model = WavKAN(input_dim=input_dim, output_dim=output_dim)
     kan_path = "results/artifacts/parkinsons/WavKAN/parkinsons_WavKAN_Fold1_weights.pth"
     
@@ -49,24 +75,25 @@ def main():
     model.eval()
     
     # 3. Ekstrakcja parametrów PIERWSZEJ warstwy KAN
-    # Struktura: nn.Sequential(WavKANLinear, LayerNorm, WavKANLinear, ...)
+    # Struktura modelu: nn.Sequential(WavKANLinear, LayerNorm, WavKANLinear, ...)
     first_layer = model.network[0]
     
-    base_weight = first_layer.base_weight.detach().cpu()         # [out, in]
-    translation = first_layer.translation.detach().cpu()         # [out, in, wavelets]
-    scale = first_layer.scale.detach().cpu()                     # [out, in, wavelets]
-    wavelet_weight = first_layer.wavelet_weight.detach().cpu()   # [out, in, wavelets]
+    base_weight = first_layer.base_weight.detach().cpu()         # Globalny trend [out, in]
+    translation = first_layer.translation.detach().cpu()         # Położenia falek [out, in, wavelets]
+    scale = first_layer.scale.detach().cpu()                     # Szerokości falek [out, in, wavelets]
+    wavelet_weight = first_layer.wavelet_weight.detach().cpu()   # Amplitudy falek [out, in, wavelets]
     
     # Szukamy najciekawszych (najbardziej aktywnych) cech medycznych.
-    # Obliczamy sumę absolutnych wag falkowych dla każdej cechy
+    # Używamy sumy wartości bezwzględnych amplitud falek po wszystkich węzłach
     feature_activity = torch.sum(torch.abs(wavelet_weight), dim=(0, 2))
+    # Bierzemy TOP 6 najbardziej decydujących atrybutów
     top_indices = torch.argsort(feature_activity, descending=True)[:6].numpy()
     
-    # Wybieramy jeden węzeł ukryty docelowy do wizualizacji (np. j=0)
+    # Wybieramy węzeł ukryty docelowy do wizualizacji (indeks j=0)
     target_node = 0
     
-    # 4. Generowanie punktów X i obliczanie Y
-    x_vals = torch.linspace(-3, 3, 300)
+    # 4. Generowanie punktów X i obliczanie krzywych analitycznych Y
+    x_vals = torch.linspace(-3, 3, 300) # Zakres z-score +/- 3 odchylenia std.
     
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
     axes = axes.flatten()
@@ -75,28 +102,30 @@ def main():
         fname = feature_names[feature_idx]
         ax = axes[idx]
         
-        # Obliczenie funkcji bazowej (SiLU * waga)
+        # Obliczenie funkcji bazowej modelu (SiLU przemnożone przez globalną wagę)
         base_val = F.silu(x_vals) * base_weight[target_node, feature_idx]
         
-        # Obliczenie sumy funkcji falkowych
+        # Obliczenie iteracyjnej sumy wszystkich nieliniowych funkcji falkowych
         wave_val = torch.zeros_like(x_vals)
         num_wavelets = wavelet_weight.shape[2]
         
         for w in range(num_wavelets):
             t = translation[target_node, feature_idx, w]
-            s = scale[target_node, feature_idx, w].abs() + 1e-8
+            s = scale[target_node, feature_idx, w].abs() + 1e-8 # Zabezpieczenie przed dzieleniem przez zero
             weight = wavelet_weight[target_node, feature_idx, w]
             
             x_scaled = (x_vals - t) / s
             wave_val += mexican_hat_wavelet(x_scaled) * weight
             
+        # Ostateczna, wyuczona funkcja na krawędzi to ich superpozycja
         total_val = base_val + wave_val
         
-        # Rysowanie składowych i sumy
+        # Rysowanie składowych i całkowitej sumy
         ax.plot(x_vals.numpy(), base_val.numpy(), linestyle=':', color='gray', alpha=0.7, label='Funkcja Bazowa (SiLU)')
         ax.plot(x_vals.numpy(), wave_val.numpy(), linestyle='--', color='orange', alpha=0.8, label='Suma Falek (Wavelets)')
         ax.plot(x_vals.numpy(), total_val.numpy(), linestyle='-', color='blue', linewidth=2.5, label='Całkowita Aktywacja KAN')
         
+        # Ustawienia estetyczne subplotów
         ax.set_title(f"Cecha: {fname}", fontsize=12, fontweight='bold')
         ax.set_xlabel("Wartość Cechy (z-score)", fontsize=10)
         ax.set_ylabel(f"Sygnał do Węzła Ukrytego {target_node}", fontsize=10)
@@ -107,6 +136,7 @@ def main():
     plt.suptitle("Prawdziwa Czarna Skrzynka: 1D Funkcje Aktywacji na Krawędziach (WavKAN)", fontsize=16, fontweight='bold', y=1.02)
     plt.tight_layout()
     
+    # 5. Zapis obrazu
     os.makedirs("results/plots", exist_ok=True)
     plot_path = "results/plots/kan_activation_functions.png"
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')

@@ -1,3 +1,11 @@
+"""
+Główny skrypt orkiestrujący eksperymenty (Automate Benchmark).
+Odpowiada za automatyczne odnalezienie wszystkich przetworzonych zbiorów danych,
+zainicjowanie wszystkich planowanych architektur (StandardMLP oraz 9 wariantów KAN)
+i systematyczne przeprowadzenie walidacji krzyżowej (5-Fold CV) dla każdej pary zbior-model.
+Zabezpiecza wyniki i agreguje je w jednym, zunifikowanym pliku wyników master (.csv).
+"""
+
 import os
 import sys
 import time
@@ -6,13 +14,13 @@ import torch
 from dataclasses import dataclass
 from tqdm import tqdm
 
-# Dodanie ścieżki, aby Python widział folder src
+# Dodanie ścieżki, aby Python widział główny folder src projektu
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.training.cross_validation import CrossValidator
 from src.training.trainer import TabularTrainer
 
-# Importy wszystkich planowanych modeli
+# Importy wszystkich planowanych modeli badawczych
 from src.models.mlp import StandardMLP
 from src.models.kan_variants.tab_kan import TabKAN
 from src.models.kan_variants.fast_kan import FastKAN
@@ -26,25 +34,36 @@ from src.models.kan_variants.relu_kan import ReLUKAN
 
 @dataclass
 class ExperimentArgs:
+    """
+    Struktura konfiguracji dla pojedynczego eksperymentu.
+    Gwarantuje ustandaryzowane hiperparametry (reprodukcyjność).
+    """
     data_path: str = ""
     model_name: str = ""
-    epochs: int = 50
-    batch_size: int = 32
-    lr: float = 1e-3
-    device: str = "cuda" if torch.cuda.is_available() else "cpu"
+    epochs: int = 50                 # Liczba epok uczenia
+    batch_size: int = 32             # Rozmiar partii danych
+    lr: float = 1e-3                 # Współczynnik uczenia (Learning Rate)
+    device: str = "cuda" if torch.cuda.is_available() else "cpu" # Automatyczne wykrywanie GPU
 
 def main():
+    """
+    Główna pętla sterująca całym benchmarkiem:
+    1. Skanuje katalog data/processed/ w poszukiwaniu zbiorów.
+    2. Definiuje słownik dostępnych modeli.
+    3. Dla każdego zbioru i dla każdego modelu wykonuje pętlę 5-Fold CV.
+    4. Zapisuje wyniki cząstkowe, a po zakończeniu pełen plik master.
+    """
     # 1. Definicja przestrzeni badawczej
     DATASETS_DIR = "data/processed/"
-    # Dynamiczne wyszukiwanie zbiorów danych
+    
+    # Dynamiczne wyszukiwanie przetworzonych zbiorów danych
     if os.path.exists(DATASETS_DIR):
         datasets = [f for f in os.listdir(DATASETS_DIR) if f.endswith('_processed.csv')]
     else:
         datasets = []
         print(f"Ostrzeżenie: Folder {DATASETS_DIR} nie istnieje. Uruchom preprocessor.py najpierw.")
     
-    # Kompletna lista 10 planowanych modeli (MLP + 9 wariantów KAN)
-    # Na ten moment ładujemy wszystkie gotowe modele:
+    # Kompletny rejestr 10 planowanych architektur do przetestowania
     MODELS = {
         "StandardMLP": StandardMLP,
         "TabKAN": TabKAN,
@@ -61,7 +80,7 @@ def main():
     os.makedirs("results", exist_ok=True)
     all_benchmark_results = []
     
-    # Obliczamy całkowitą liczbę eksperymentów dla paska postępu
+    # Obliczamy całkowitą liczbę eksperymentów dla płynnego paska postępu
     total_experiments = len(datasets) * len(MODELS)
     
     print(f" Rozpoczynam wielki benchmark medyczny")
@@ -69,27 +88,31 @@ def main():
     print(f" Konfiguracja: {len(datasets)} zbiorów x {len(MODELS)} modeli = {total_experiments} testów CV\n")
 
     start_time = time.time()
+    # Inicjalizacja walidatora z ziarnem 42 dla pełnej reprodukcyjności
     cv_engine = CrossValidator(k_folds=5, random_state=42)
 
-    # Główny pasek postępu (cały benchmark)
+    # Inicjalizacja paska postępu z biblioteki tqdm
     pbar = tqdm(total=total_experiments, desc="Całkowity postęp", unit="exp")
 
+    # Główna pętla iterująca po plikach danych
     for dataset_file in datasets:
         data_path = os.path.join(DATASETS_DIR, dataset_file)
         dataset_name = dataset_file.replace("_processed.csv", "")
         
+        # Ochrona na wypadek, gdyby plik nagle zniknął w trakcie trwania pętli
         if not os.path.exists(data_path):
-            pbar.update(len(MODELS)) # Pomijamy wszystkie modele dla tego zbioru
+            pbar.update(len(MODELS)) # Pomijamy wszystkie modele dla tego zbioru na pasku
             continue
             
+        # Pętla iterująca po klasach modeli dla aktualnego zbioru
         for model_name, model_class in MODELS.items():
-            # Aktualizacja opisu paska o bieżący status
+            # Bieżący status w konsoli, pozwalający na łatwe śledzenie postępu
             pbar.set_postfix_str(f"Obecnie: {model_name} na {dataset_name}")
             
             args = ExperimentArgs(data_path=data_path, model_name=model_name)
             
             try:
-                # Uruchomienie 5-Fold CV
+                # Uruchomienie rygorystycznej 5-Fold CV dla bieżącej pary zbior-model
                 df_results = cv_engine.run(
                     model_class=model_class,
                     trainer_class=TabularTrainer,
@@ -98,7 +121,7 @@ def main():
                 all_benchmark_results.append(df_results)
                 
             except Exception as e:
-                # Zapisywanie błędów do pliku logu, aby nie zaśmiecać konsoli z paskiem postępu
+                # Ciche logowanie błędów, by awaria jednego modelu nie wywaliła całego wielogodzinnego benchmarku
                 with open("results/error_log.txt", "a") as f:
                     f.write(f"Error: {model_name} on {dataset_name}: {str(e)}\n")
             
@@ -106,12 +129,14 @@ def main():
 
     pbar.close()
 
-    # 2. Agregacja i zapis
+    # 2. Agregacja i zapis pliku wyjściowego
     if all_benchmark_results:
         final_df = pd.concat(all_benchmark_results, ignore_index=True)
-        # Dodajemy timestamp do nazwy, żeby nie nadpisywać starych testów
+        # Znacznik czasowy, by nie nadpisać testów z wczoraj
         timestamp = time.strftime("%Y%m%d-%H%M")
         results_path = f"results/benchmark_master_{timestamp}.csv"
+        
+        # Zrzut wszystkiego do pliku CSV gotowego do analizy
         final_df.to_csv(results_path, index=False)
         
         print("\n" + "#"*60)
