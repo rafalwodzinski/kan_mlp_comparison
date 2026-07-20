@@ -6,6 +6,7 @@ from typing import Dict, Any
 import sys
 import os
 import json
+import time
 
 # Add path to import from other src folders
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -41,6 +42,10 @@ class TabularTrainer:
         self.evaluator = MedicalMetricsEvaluator(is_binary=self.is_binary)
         self.last_confusion_matrix = None
         self.history = {'train_loss': [], 'val_loss': [], 'val_mcc': [], 'val_auroc': []}
+        
+        # Time tracking metrics
+        self.avg_epoch_time_seconds = 0.0
+        self.total_train_time_seconds = 0.0
 
     def train_epoch(self, dataloader: DataLoader) -> float:
         """Performs one training epoch."""
@@ -106,8 +111,14 @@ class TabularTrainer:
         """Main training loop (pure PyTorch + print)."""
         print(f"\n[{self.experiment_name}] Starting training...")
         
+        start_time = time.time()
+        epoch_times = []
+        
         for epoch in range(epochs):
+            epoch_start = time.time()
             train_loss = self.train_epoch(train_loader)
+            epoch_end = time.time()
+            epoch_times.append(epoch_end - epoch_start)
             val_metrics = self.evaluate(val_loader)
             
             # Save to history
@@ -120,6 +131,10 @@ class TabularTrainer:
             print(f"Epoch {epoch+1:03d}/{epochs} | Train Loss: {train_loss:.4f} | "
                   f"Val Loss: {val_metrics['loss']:.4f} | Val MCC: {val_metrics['mcc']:.4f} | "
                   f"Val AUROC: {val_metrics['auroc']:.4f}")
+        
+        end_time = time.time()
+        self.total_train_time_seconds = end_time - start_time
+        self.avg_epoch_time_seconds = sum(epoch_times) / len(epoch_times) if epoch_times else 0.0
         
         # Final artifacts directory structure
         save_dir = f"results/artifacts/{self.dataset_name}/{self.model_name}"

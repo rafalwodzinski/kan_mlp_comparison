@@ -91,6 +91,9 @@ class CrossValidator:
             metrics['fold'] = fold + 1
             metrics['model'] = args.model_name
             metrics['dataset'] = dataset_name
+            metrics['trainable_parameters'] = model.get_num_parameters()
+            metrics['avg_epoch_time_seconds'] = trainer.avg_epoch_time_seconds
+            metrics['total_train_time_seconds'] = trainer.total_train_time_seconds
             
             all_fold_metrics.append(metrics)
 
