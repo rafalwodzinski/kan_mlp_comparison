@@ -7,10 +7,12 @@ import sys
 import os
 import json
 import time
+import matplotlib.pyplot as plt
 
 # Add path to import from other src folders
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from evaluation.metrics import MedicalMetricsEvaluator
+from training.early_stopping import EarlyStopping
 
 class TabularTrainer:
     """
@@ -111,6 +113,10 @@ class TabularTrainer:
         """Main training loop (pure PyTorch + print)."""
         print(f"\n[{self.experiment_name}] Starting training...")
         
+        # Configure Early Stopping
+        patience = run_params.get("patience", 10)
+        early_stopping = EarlyStopping(patience=patience, min_delta=1e-4, verbose=False)
+        
         start_time = time.time()
         epoch_times = []
         
@@ -127,18 +133,46 @@ class TabularTrainer:
             self.history['val_mcc'].append(val_metrics['mcc'])
             self.history['val_auroc'].append(val_metrics['auroc'])
             
+            # Early Stopping check
+            early_stopping(val_metrics['loss'], self.model, epoch)
+            
             # Print logs in console
             print(f"Epoch {epoch+1:03d}/{epochs} | Train Loss: {train_loss:.4f} | "
                   f"Val Loss: {val_metrics['loss']:.4f} | Val MCC: {val_metrics['mcc']:.4f} | "
                   f"Val AUROC: {val_metrics['auroc']:.4f}")
+                  
+            if early_stopping.early_stop:
+                print(f"[{self.experiment_name}] Early stopping triggered at epoch {epoch+1}")
+                self.history['stopped_epoch'] = epoch
+                self.history['best_epoch'] = early_stopping.best_epoch
+                break
         
         end_time = time.time()
         self.total_train_time_seconds = end_time - start_time
         self.avg_epoch_time_seconds = sum(epoch_times) / len(epoch_times) if epoch_times else 0.0
         
+        # Restore best weights if Early Stopping triggered
+        if early_stopping.best_state is not None:
+            self.model.load_state_dict(early_stopping.best_state)
+        
         # Final artifacts directory structure
         save_dir = f"results/artifacts/{self.dataset_name}/{self.model_name}"
         os.makedirs(save_dir, exist_ok=True)
+        
+        # Plot and save learning curve
+        plt.figure(figsize=(10, 6))
+        plt.plot(self.history['train_loss'], label='Train Loss')
+        plt.plot(self.history['val_loss'], label='Val Loss')
+        if 'best_epoch' in self.history:
+            plt.axvline(x=self.history['best_epoch'], color='r', linestyle='--', label='Best Epoch (Early Stopping)')
+        plt.title(f"Learning Curve - {self.experiment_name}")
+        plt.xlabel("Epoch")
+        plt.ylabel("Loss")
+        plt.legend()
+        plt.grid(True)
+        plot_path = os.path.join(save_dir, f"{self.experiment_name}_learning_curve.png")
+        plt.savefig(plot_path)
+        plt.close()
         
         # Target paths
         weights_path = os.path.join(save_dir, f"{self.experiment_name}_weights.pth")
