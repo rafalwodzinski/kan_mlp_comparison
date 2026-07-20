@@ -5,26 +5,26 @@ import sys
 import os
 from typing import List
 
-# Importujemy klasę bazową
+# Import base class
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from base import BaseTabularModel
 
 class RadialBasisFunction(nn.Module):
     """
-    Warstwa Gaussowskich Funkcji Bazowych (RBF).
-    Generuje wektory bazowe znacznie szybciej niż klasyczne B-spliny.
+    Radial Basis Function (RBF) layer.
+    Generates basis vectors much faster than classic B-splines.
     """
     def __init__(self, grid_min: float = -2.0, grid_max: float = 2.0, num_grids: int = 8, denominator: float = None):
         super().__init__()
-        # Inicjalizacja siatki równoodległych środków (means)
+        # Initialization of equally spaced grid means
         grid = torch.linspace(grid_min, grid_max, num_grids)
         self.grid = nn.Parameter(grid, requires_grad=False)
         
-        # Szerokość funkcji Gausowskiej (variance/sigma). Jeśli brak, obliczana automatycznie.
+        # Gaussian function width (variance/sigma). If None, calculated automatically.
         self.denominator = denominator or (grid_max - grid_min) / (num_grids - 1)
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Rozszerzamy wymiary, aby wektoryzować operację odległości
+        # Expand dimensions to vectorize the distance operation
         # x shape: [batch_size, in_features, 1]
         # grid shape: [num_grids]
         # output shape: [batch_size, in_features, num_grids]
@@ -33,7 +33,7 @@ class RadialBasisFunction(nn.Module):
 
 class FastKANLinear(nn.Module):
     """
-    Liniowa warstwa FastKAN wykorzystująca funkcje RBF jako wagi na krawędziach.
+    Linear FastKAN layer using RBF functions as edge weights.
     """
     def __init__(self, in_features: int, out_features: int, grid_min: float = -2.0, grid_max: float = 2.0, num_grids: int = 8):
         super().__init__()
@@ -43,25 +43,25 @@ class FastKANLinear(nn.Module):
         self.rbf = RadialBasisFunction(grid_min, grid_max, num_grids)
         self.base_activation = nn.SiLU()
         
-        # Trenowalne wagi: klasyczne (base) oraz dla RBF
+        # Trainable weights: classic (base) and for RBF
         self.base_weight = nn.Parameter(torch.Tensor(out_features, in_features))
         self.rbf_weight = nn.Parameter(torch.Tensor(out_features, in_features, num_grids))
         
         self.reset_parameters()
 
     def reset_parameters(self):
-        # Inicjalizacja Kaiming zapobiega eksplozji gradientu na początku treningu
+        # Kaiming initialization prevents gradient explosion at the beginning of training
         nn.init.kaiming_uniform_(self.base_weight, a=math.sqrt(5))
         nn.init.kaiming_uniform_(self.rbf_weight, a=math.sqrt(5))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # 1. Klasyczna aktywacja bazowa
+        # 1. Classic base activation
         base_output = nn.functional.linear(self.base_activation(x), self.base_weight)
         
-        # 2. Aktywacja RBF
+        # 2. RBF activation
         rbf_output = self.rbf(x) # [batch, in_features, num_grids]
         
-        # 3. Sumowanie ważonych RBF przy użyciu zoptymalizowanego einsum
+        # 3. Summing weighted RBFs using optimized einsum
         # b: batch_size, i: in_features, g: num_grids, o: out_features
         rbf_weighted = torch.einsum('big,oig->bo', rbf_output, self.rbf_weight)
         
@@ -70,8 +70,8 @@ class FastKANLinear(nn.Module):
 
 class FastKAN(BaseTabularModel):
     """
-    Architektura FastKAN. 
-    Idealny kompromis między ekspresyjnością sieci Kolmogorov-Arnold a wydajnością na GPU.
+    FastKAN architecture. 
+    An ideal compromise between Kolmogorov-Arnold network expressiveness and GPU performance.
     """
     def __init__(
         self, 
@@ -91,7 +91,7 @@ class FastKAN(BaseTabularModel):
             layers.append(nn.LayerNorm(h_dim))
             in_features = h_dim
             
-        # Warstwa wyjściowa
+        # Output layer
         layers.append(FastKANLinear(in_features, output_dim, num_grids=num_grids))
         
         self.network = nn.Sequential(*layers)

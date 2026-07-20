@@ -5,8 +5,8 @@ from .base import BaseTabularModel
 
 class StandardMLP(BaseTabularModel):
     """
-    Klasyczny Wielowarstwowy Perceptron (MLP) z Batch Normalization i Dropoutem.
-    Służy jako podstawowy punkt odniesienia (Baseline).
+    Classic Multi-Layer Perceptron (MLP) with Batch Normalization and Dropout.
+    Serves as the basic point of reference (Baseline).
     """
     def __init__(
         self, 
@@ -24,7 +24,7 @@ class StandardMLP(BaseTabularModel):
         for h_dim in hidden_dims:
             layers.append(nn.Linear(in_features, h_dim))
             layers.append(nn.BatchNorm1d(h_dim))
-            layers.append(nn.GELU()) # GELU często sprawdza się lepiej niż ReLU
+            layers.append(nn.GELU()) # GELU often performs better than ReLU
             layers.append(nn.Dropout(dropout_rate))
             in_features = h_dim
             
@@ -37,7 +37,7 @@ class StandardMLP(BaseTabularModel):
 
 
 class ResidualBlock(nn.Module):
-    """Blok rezydualny dla danych tabelarycznych."""
+    """Residual block for tabular data."""
     def __init__(self, dim: int, dropout_rate: float):
         super().__init__()
         self.linear1 = nn.Linear(dim, dim)
@@ -57,8 +57,8 @@ class ResidualBlock(nn.Module):
 
 class TabResNet(BaseTabularModel):
     """
-    MLP z połączeniami rezydualnymi (wzorowane na architekturze ResNet).
-    Znacznie silniejszy punkt odniesienia dla medycznych danych tabelarycznych.
+    MLP with residual connections (inspired by ResNet architecture).
+    A much stronger baseline for medical tabular data.
     """
     def __init__(
         self, 
@@ -71,19 +71,19 @@ class TabResNet(BaseTabularModel):
     ):
         super().__init__(input_dim, output_dim, **kwargs)
         
-        # Rzutowanie wejścia na wymiar ukryty
+        # Input projection to hidden dimension
         self.input_projection = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
             nn.GELU()
         )
         
-        # Bloki rezydualne
+        # Residual blocks
         self.res_blocks = nn.ModuleList([
             ResidualBlock(hidden_dim, dropout_rate) for _ in range(num_blocks)
         ])
         
-        # Warstwa wyjściowa
+        # Output layer
         self.head = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

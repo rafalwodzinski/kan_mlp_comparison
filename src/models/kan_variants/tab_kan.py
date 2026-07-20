@@ -4,11 +4,11 @@ import sys
 import os
 from typing import List
 
-# Import klasy bazowej oraz zoptymalizowanej warstwy FastKANLinear z naszego repozytorium
+# Import base class and optimized FastKANLinear layer from our repository
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from base import BaseTabularModel
 
-# Bezpieczny import warstwy FastKANLinear
+# Safe import of FastKANLinear layer
 try:
     from fast_kan import FastKANLinear
 except ImportError:
@@ -17,24 +17,24 @@ except ImportError:
 
 class TabularGating(nn.Module):
     """
-    Mechanizm bramkowania (Feature Gating).
-    Uczy się maski, która przepuszcza tylko istotne cechy kliniczne, tłumiąc szum.
+    Feature Gating mechanism.
+    Learns a mask that passes only relevant clinical features, suppressing noise.
     """
     def __init__(self, input_dim: int):
         super().__init__()
-        # Inicjalizujemy wagi tak, aby początkowo przepuszczały większość sygnału
+        # Initialize weights so that they initially pass most of the signal
         self.weight = nn.Parameter(torch.ones(input_dim))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Używamy funkcji sigmoid do skalowania wagi cech między 0 a 1
+        # Use sigmoid function to scale feature weight between 0 and 1
         return x * torch.sigmoid(self.weight)
 
 
 class TabKAN(BaseTabularModel):
     """
-    Architektura TabKAN.
-    Docelowy wariant zaprojektowany stricte pod ustrukturyzowane, niejednorodne 
-    medyczne zbiory danych, łączący KAN z mechanizmami sieci tabelarycznych.
+    TabKAN Architecture.
+    Target variant designed strictly for structured, heterogeneous 
+    medical datasets, combining KAN with tabular network mechanisms.
     """
     def __init__(
         self, 
@@ -47,10 +47,10 @@ class TabKAN(BaseTabularModel):
     ):
         super().__init__(input_dim, output_dim, hidden_dims=hidden_dims, num_grids=num_grids, **kwargs)
         
-        # 1. Warstwa bramkowania cech
+        # 1. Feature gating layer
         self.gating = TabularGating(input_dim)
         
-        # 2. Główny korpus sieci KAN
+        # 2. Main body of KAN network
         self.layers = nn.ModuleList()
         self.norms = nn.ModuleList()
         self.dropouts = nn.ModuleList()
@@ -62,24 +62,24 @@ class TabKAN(BaseTabularModel):
             self.dropouts.append(nn.Dropout(dropout_rate))
             in_features = h_dim
             
-        # 3. Głowica klasyfikacyjna
+        # 3. Classification head
         self.output_layer = FastKANLinear(in_features, output_dim, num_grids=num_grids)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # A. Selekcja i tłumienie szumu w cechach wejściowych
+        # A. Feature selection and noise suppression
         x = self.gating(x)
         
-        # B. Przejście przez warstwy KAN z uwzględnieniem Skip Connections
+        # B. Forward pass through KAN layers including Skip Connections
         for layer, norm, drop in zip(self.layers, self.norms, self.dropouts):
             identity = x
             x = layer(x)
             x = norm(x)
             x = drop(x)
             
-            # Połączenie rezydualne (tylko jeśli wymiary się pokrywają)
+            # Residual connection (only if dimensions match)
             if identity.shape == x.shape:
                 x = x + identity
                 
-        # C. Klasyfikacja
+        # C. Classification
         out = self.output_layer(x)
         return out

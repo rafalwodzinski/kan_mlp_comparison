@@ -4,14 +4,14 @@ import sys
 import os
 from typing import List
 
-# Import klasy bazowej
+# Import base class
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from base import BaseTabularModel
 
 class GramKANLinear(nn.Module):
     """
-    Warstwa KAN oparta na dyskretnych wielomianach Grama.
-    Architektura o silnych podstawach teoretycznych dla dyskretnych danych tabelarycznych.
+    KAN layer based on discrete Gram polynomials.
+    Architecture with strong theoretical foundations for discrete tabular data.
     """
     def __init__(self, in_features: int, out_features: int, degree: int = 4):
         super().__init__()
@@ -19,35 +19,35 @@ class GramKANLinear(nn.Module):
         self.out_features = out_features
         self.degree = degree
         
-        # Trenowalne współczynniki dla bazy wielomianów Grama
+        # Trainable coefficients for Gram polynomial basis
         self.gram_coeffs = nn.Parameter(torch.empty(out_features, in_features, degree + 1))
         
         self.reset_parameters()
 
     def reset_parameters(self):
-        # Inicjalizacja stabilizująca wariancję (skalowana do rzędu wielomianu)
+        # Variance stabilizing initialization (scaled to polynomial degree)
         nn.init.normal_(self.gram_coeffs, mean=0.0, std=1.0 / (self.in_features * (self.degree + 1)))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # 1. Rzutowanie dziedziny na [-1, 1] dla stabilności numerycznej
+        # 1. Project domain to [-1, 1] for numerical stability
         x = torch.tanh(x)
         
-        # 2. Generowanie bazy wielomianów Grama (aproksymacja dla DL)
-        # Baza zerowa i pierwsza
+        # 2. Generate Gram polynomial basis (approximation for DL)
+        # Zero and first basis
         gram_basis = [torch.ones_like(x), x]
         
-        # Kolejne stopnie wielomianu z trójczłonowej relacji rekurencyjnej
+        # Subsequent polynomial degrees from three-term recurrence relation
         for n in range(2, self.degree + 1):
-            # Dla celów DL używamy uproszczonej formy dyskretnej ortogonalizacji 
-            # przypominającej wielomiany dyskretne, stabilnej dla tensora x
+            # For DL purposes we use a simplified form of discrete orthogonalization 
+            # resembling discrete polynomials, stable for tensor x
             term = x * gram_basis[n-1] - (n**2 - 1) / (4 * n**2 - 1) * gram_basis[n-2]
             gram_basis.append(term)
             
-        # Złożenie bazy do tensora: [batch_size, in_features, degree + 1]
+        # Assemble basis to tensor: [batch_size, in_features, degree + 1]
         gram_basis = torch.stack(gram_basis, dim=-1)
         
-        # 3. Sumowanie ważone poprzez optymalizowaną operację einsum
-        # b: batch, i: wejścia, d: stopień, o: wyjścia
+        # 3. Weighted summation via optimized einsum operation
+        # b: batch, i: inputs, d: degree, o: outputs
         out = torch.einsum('bid,oid->bo', gram_basis, self.gram_coeffs)
         
         return out
@@ -55,9 +55,9 @@ class GramKANLinear(nn.Module):
 
 class GramKAN(BaseTabularModel):
     """
-    Architektura GramKAN.
-    Wykorzystuje matematykę dyskretnej ortogonalności, co czyni ją 
-    wyjątkowo użyteczną do klasyfikacji tabelarycznych danych klinicznych.
+    GramKAN architecture.
+    Uses discrete orthogonality mathematics, which makes it 
+    exceptionally useful for clinical tabular data classification.
     """
     def __init__(
         self, 
@@ -74,10 +74,10 @@ class GramKAN(BaseTabularModel):
         
         for h_dim in hidden_dims:
             layers.append(GramKANLinear(in_features, h_dim, degree))
-            layers.append(nn.LayerNorm(h_dim)) # Normalizacja chroniąca przed "wybuchem" wielomianów
+            layers.append(nn.LayerNorm(h_dim)) # Normalization protecting against polynomial "explosion"
             in_features = h_dim
             
-        # Ostatnia warstwa wyjściowa
+        # Final output layer
         layers.append(GramKANLinear(in_features, output_dim, degree))
         
         self.network = nn.Sequential(*layers)
