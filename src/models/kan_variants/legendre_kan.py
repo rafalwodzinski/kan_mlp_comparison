@@ -4,14 +4,14 @@ import sys
 import os
 from typing import List
 
-# Import klasy bazowej z uwzględnieniem ścieżki
+# Import base class with path inclusion
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from base import BaseTabularModel
 
 class LegendreKANLinear(nn.Module):
     """
-    Warstwa KAN oparta na ortogonalnych wielomianach Legendre'a.
-    Zapewnia równomierną wagę błędu aproksymacji na całym przedziale dziedziny.
+    KAN layer based on orthogonal Legendre polynomials.
+    Ensures uniform approximation error weight over the entire domain interval.
     """
     def __init__(self, in_features: int, out_features: int, degree: int = 4):
         super().__init__()
@@ -19,28 +19,28 @@ class LegendreKANLinear(nn.Module):
         self.out_features = out_features
         self.degree = degree
         
-        # Trenowalne współczynniki wielomianów Legendre'a
+        # Trainable Legendre polynomial coefficients
         self.legendre_coeffs = nn.Parameter(torch.empty(out_features, in_features, degree + 1))
         
-        # Inicjalizacja Xaviera/Glorota (skalowana odwrotnie proporcjonalnie do stopnia wielomianu)
+        # Xavier/Glorot initialization (scaled inversely proportional to polynomial degree)
         nn.init.normal_(self.legendre_coeffs, mean=0.0, std=1.0 / (in_features * (degree + 1)))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # 1. Mapowanie dziedziny na [-1, 1] dla stabilności wielomianów
+        # 1. Map domain to [-1, 1] for polynomials stability
         x = torch.tanh(x)
         
-        # 2. Rekurencyjne generowanie bazy wielomianów Legendre'a
+        # 2. Recursive generation of Legendre polynomials basis
         legendre_basis = [torch.ones_like(x), x]
         
         for n in range(2, self.degree + 1):
-            # Formuła relacji rekurencyjnej dla wielomianów Legendre'a
+            # Legendre polynomials recurrence relation formula
             term = ((2 * n - 1) * x * legendre_basis[n-1] - (n - 1) * legendre_basis[n-2]) / n
             legendre_basis.append(term)
             
-        # Złożenie do tensora: [batch_size, in_features, degree + 1]
+        # Assemble to tensor: [batch_size, in_features, degree + 1]
         legendre_basis = torch.stack(legendre_basis, dim=-1)
         
-        # 3. Sumowanie ważone poprzez optymalizowaną operację einsum
+        # 3. Weighted summation via optimized einsum operation
         # b: batch_size, i: in_features, d: degree + 1, o: out_features
         out = torch.einsum('bid,oid->bo', legendre_basis, self.legendre_coeffs)
         
@@ -49,9 +49,9 @@ class LegendreKANLinear(nn.Module):
 
 class LegendreKAN(BaseTabularModel):
     """
-    Architektura LegendreKAN.
-    Alternatywa dla ChebyKAN, sprawdzająca się świetnie w przypadku 
-    rozkładów danych zbliżonych do jednostajnych.
+    LegendreKAN architecture.
+    Alternative to ChebyKAN, works great for 
+    nearly uniform data distributions.
     """
     def __init__(
         self, 
@@ -68,10 +68,10 @@ class LegendreKAN(BaseTabularModel):
         
         for h_dim in hidden_dims:
             layers.append(LegendreKANLinear(in_features, h_dim, degree))
-            layers.append(nn.LayerNorm(h_dim)) # Normalizacja stabilizująca kolejne warstwy wielomianów
+            layers.append(nn.LayerNorm(h_dim)) # Normalization stabilizing subsequent polynomial layers
             in_features = h_dim
             
-        # Ostatnia warstwa wyjściowa
+        # Final output layer
         layers.append(LegendreKANLinear(in_features, output_dim, degree))
         
         self.network = nn.Sequential(*layers)

@@ -8,31 +8,31 @@ from typing import Dict, Any, Tuple, Optional
 
 class MedicalMetricsEvaluator:
     """
-    Klasa odpowiedzialna za rygorystyczne obliczanie metryk 
-    dla medycznych modeli tabelarycznych.
-    Obsługuje zarówno zadania binarne, jak i wieloklasowe.
+    Class responsible for rigorous metrics calculation 
+    for medical tabular models.
+    Supports both binary and multiclass tasks.
     """
     def __init__(self, is_binary: bool = True):
         """
         Args:
-            is_binary (bool): Flaga określająca typ problemu. 
-                              Zmienia sposób agregacji (np. macro dla multiclass).
+            is_binary (bool): Flag indicating the problem type. 
+                              Changes aggregation method (e.g., macro for multiclass).
         """
         self.is_binary = is_binary
         self.average_method = 'binary' if is_binary else 'macro'
 
     def calculate_metrics(self, y_true: np.ndarray, y_prob: np.ndarray) -> Dict[str, float]:
         """
-        Oblicza pełen zestaw metryk klasyfikacyjnych.
+        Calculates a full set of classification metrics.
         
         Args:
-            y_true (np.ndarray): Prawdziwe etykiety klas (1D).
-            y_prob (np.ndarray): Prawdopodobieństwa klas (1D dla binarnej, 2D dla multiclass).
+            y_true (np.ndarray): True class labels (1D).
+            y_prob (np.ndarray): Class probabilities (1D for binary, 2D for multiclass).
             
         Returns:
-            Dict[str, float]: Słownik z wynikami poszczególnych metryk.
+            Dict[str, float]: Dictionary with results of individual metrics.
         """
-        # Konwersja prawdopodobieństw na twarde predykcje (hard labels)
+        # Conversion of probabilities to hard predictions (hard labels)
         if self.is_binary:
             y_pred = (y_prob >= 0.5).astype(int)
         else:
@@ -47,7 +47,7 @@ class MedicalMetricsEvaluator:
             "mcc": matthews_corrcoef(y_true, y_pred)
         }
 
-        # Obliczanie AUROC wymaga specjalnego potraktowania dla multiclass
+        # AUROC calculation requires special treatment for multiclass
         try:
             if self.is_binary:
                 if len(np.unique(y_true)) > 1:
@@ -59,18 +59,18 @@ class MedicalMetricsEvaluator:
                 if len(present_classes) == y_prob.shape[1]:
                     metrics["auroc"] = roc_auc_score(y_true, y_prob, multi_class="ovr", average="macro")
                 elif len(present_classes) > 1:
-                    # Filtrujemy y_prob tylko dla klas faktycznie występujących w y_true
+                    # We filter y_prob only for classes actually present in y_true
                     y_prob_filtered = y_prob[:, present_classes]
-                    # Skalujemy ponownie prawdopodobieństwa do 1
+                    # We rescale probabilities back to 1
                     y_prob_filtered = y_prob_filtered / (y_prob_filtered.sum(axis=1, keepdims=True) + 1e-8)
                     metrics["auroc"] = roc_auc_score(y_true, y_prob_filtered, multi_class="ovr", average="macro", labels=present_classes)
-                    print(f"[Warning] Brakujące klasy w ewaluacji AUROC. Policzono dla {len(present_classes)}/{y_prob.shape[1]} klas.")
+                    print(f"[Warning] Missing classes in AUROC evaluation. Calculated for {len(present_classes)}/{y_prob.shape[1]} classes.")
                 else:
-                    # W przypadku tylko jednej klasy w zbiorze (skrajny wyciek danych testowych/walidacyjnych)
+                    # In case of only one class in the set (extreme test/validation data leakage)
                     metrics["auroc"] = metrics["balanced_accuracy"]
-                    print("[Warning] Tylko jedna klasa w y_true! AUROC niemożliwy, użyto balanced_accuracy jako fallback.")
+                    print("[Warning] Only one class in y_true! AUROC impossible, used balanced_accuracy as fallback.")
         except Exception as e:
-            # Żelazne zabezpieczenie przed awarią psującą statystyki - nigdy nie zwracamy np.nan
+            # Ironclad safeguard against crash breaking statistics - we never return np.nan
             print(f"[Error AUROC] {str(e)}. Fallback to balanced_accuracy.")
             metrics["auroc"] = metrics["balanced_accuracy"]
 
@@ -78,14 +78,14 @@ class MedicalMetricsEvaluator:
 
     def get_confusion_matrix(self, y_true: np.ndarray, y_prob: np.ndarray) -> np.ndarray:
         """
-        Generuje macierz pomyłek do analizy przypadków brzegowych.
+        Generates a confusion matrix for edge case analysis.
         
         Args:
-            y_true (np.ndarray): Prawdziwe etykiety.
-            y_prob (np.ndarray): Prawdopodobieństwa.
+            y_true (np.ndarray): True labels.
+            y_prob (np.ndarray): Probabilities.
             
         Returns:
-            np.ndarray: Macierz pomyłek w formacie numpy.
+            np.ndarray: Confusion matrix in numpy format.
         """
         if self.is_binary:
             y_pred = (y_prob >= 0.5).astype(int)

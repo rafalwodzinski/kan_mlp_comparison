@@ -1,9 +1,9 @@
 """
-Główny skrypt orkiestrujący eksperymenty (Automate Benchmark).
-Odpowiada za automatyczne odnalezienie wszystkich przetworzonych zbiorów danych,
-zainicjowanie wszystkich planowanych architektur (StandardMLP oraz 9 wariantów KAN)
-i systematyczne przeprowadzenie walidacji krzyżowej (5-Fold CV) dla każdej pary zbior-model.
-Zabezpiecza wyniki i agreguje je w jednym, zunifikowanym pliku wyników master (.csv).
+Main script orchestrating experiments (Automate Benchmark).
+Responsible for automatically finding all processed datasets,
+initializing all planned architectures (StandardMLP and 9 KAN variants)
+and systematically running cross-validation (5-Fold CV) for each dataset-model pair.
+Saves results and aggregates them in one unified master results file (.csv).
 """
 
 import os
@@ -14,13 +14,13 @@ import torch
 from dataclasses import dataclass
 from tqdm import tqdm
 
-# Dodanie ścieżki, aby Python widział główny folder src projektu
+# Add path so Python sees the main src folder of the project
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.training.cross_validation import CrossValidator
 from src.training.trainer import TabularTrainer
 
-# Importy wszystkich planowanych modeli badawczych
+# Imports of all planned research models
 from src.models.mlp import StandardMLP
 from src.models.kan_variants.tab_kan import TabKAN
 from src.models.kan_variants.fast_kan import FastKAN
@@ -35,35 +35,35 @@ from src.models.kan_variants.relu_kan import ReLUKAN
 @dataclass
 class ExperimentArgs:
     """
-    Struktura konfiguracji dla pojedynczego eksperymentu.
-    Gwarantuje ustandaryzowane hiperparametry (reprodukcyjność).
+    Configuration structure for a single experiment.
+    Guarantees standardized hyperparameters (reproducibility).
     """
     data_path: str = ""
     model_name: str = ""
-    epochs: int = 50                 # Liczba epok uczenia
-    batch_size: int = 32             # Rozmiar partii danych
-    lr: float = 1e-3                 # Współczynnik uczenia (Learning Rate)
-    device: str = "cuda" if torch.cuda.is_available() else "cpu" # Automatyczne wykrywanie GPU
+    epochs: int = 50                 # Number of training epochs
+    batch_size: int = 32             # Batch size
+    lr: float = 1e-3                 # Learning Rate
+    device: str = "cuda" if torch.cuda.is_available() else "cpu" # Automatic GPU detection
 
 def main():
     """
-    Główna pętla sterująca całym benchmarkiem:
-    1. Skanuje katalog data/processed/ w poszukiwaniu zbiorów.
-    2. Definiuje słownik dostępnych modeli.
-    3. Dla każdego zbioru i dla każdego modelu wykonuje pętlę 5-Fold CV.
-    4. Zapisuje wyniki cząstkowe, a po zakończeniu pełen plik master.
+    Main loop controlling the entire benchmark:
+    1. Scans data/processed/ directory for datasets.
+    2. Defines a dictionary of available models.
+    3. For each dataset and for each model, executes a 5-Fold CV loop.
+    4. Saves partial results, and a full master file upon completion.
     """
-    # 1. Definicja przestrzeni badawczej
+    # 1. Definition of research space
     DATASETS_DIR = "data/processed/"
     
-    # Dynamiczne wyszukiwanie przetworzonych zbiorów danych
+    # Dynamic search for processed datasets
     if os.path.exists(DATASETS_DIR):
         datasets = [f for f in os.listdir(DATASETS_DIR) if f.endswith('_processed.csv')]
     else:
         datasets = []
-        print(f"Ostrzeżenie: Folder {DATASETS_DIR} nie istnieje. Uruchom preprocessor.py najpierw.")
+        print(f"Warning: Directory {DATASETS_DIR} does not exist. Run preprocessor.py first.")
     
-    # Kompletny rejestr 10 planowanych architektur do przetestowania
+    # Complete registry of 10 planned architectures to test
     MODELS = {
         "StandardMLP": StandardMLP,
         "TabKAN": TabKAN,
@@ -80,39 +80,39 @@ def main():
     os.makedirs("results", exist_ok=True)
     all_benchmark_results = []
     
-    # Obliczamy całkowitą liczbę eksperymentów dla płynnego paska postępu
+    # Calculate total number of experiments for a smooth progress bar
     total_experiments = len(datasets) * len(MODELS)
     
-    print(f" Rozpoczynam wielki benchmark medyczny")
-    print(f" Urządzenie: {ExperimentArgs.device.upper()}")
-    print(f" Konfiguracja: {len(datasets)} zbiorów x {len(MODELS)} modeli = {total_experiments} testów CV\n")
+    print(f" Starting grand medical benchmark")
+    print(f" Device: {ExperimentArgs.device.upper()}")
+    print(f" Config: {len(datasets)} datasets x {len(MODELS)} models = {total_experiments} CV tests\n")
 
     start_time = time.time()
-    # Inicjalizacja walidatora z ziarnem 42 dla pełnej reprodukcyjności
+    # Initialize validator with seed 42 for full reproducibility
     cv_engine = CrossValidator(k_folds=5, random_state=42)
 
-    # Inicjalizacja paska postępu z biblioteki tqdm
-    pbar = tqdm(total=total_experiments, desc="Całkowity postęp", unit="exp")
+    # Initialize progress bar from tqdm library
+    pbar = tqdm(total=total_experiments, desc="Total progress", unit="exp")
 
-    # Główna pętla iterująca po plikach danych
+    # Main loop iterating over data files
     for dataset_file in datasets:
         data_path = os.path.join(DATASETS_DIR, dataset_file)
         dataset_name = dataset_file.replace("_processed.csv", "")
         
-        # Ochrona na wypadek, gdyby plik nagle zniknął w trakcie trwania pętli
+        # Protection in case the file suddenly disappears during loop execution
         if not os.path.exists(data_path):
-            pbar.update(len(MODELS)) # Pomijamy wszystkie modele dla tego zbioru na pasku
+            pbar.update(len(MODELS)) # Skip all models for this dataset on the bar
             continue
             
-        # Pętla iterująca po klasach modeli dla aktualnego zbioru
+        # Loop iterating over model classes for the current dataset
         for model_name, model_class in MODELS.items():
-            # Bieżący status w konsoli, pozwalający na łatwe śledzenie postępu
-            pbar.set_postfix_str(f"Obecnie: {model_name} na {dataset_name}")
+            # Current status in console, allowing easy progress tracking
+            pbar.set_postfix_str(f"Currently: {model_name} on {dataset_name}")
             
             args = ExperimentArgs(data_path=data_path, model_name=model_name)
             
             try:
-                # Uruchomienie rygorystycznej 5-Fold CV dla bieżącej pary zbior-model
+                # Run rigorous 5-Fold CV for current dataset-model pair
                 df_results = cv_engine.run(
                     model_class=model_class,
                     trainer_class=TabularTrainer,
@@ -121,7 +121,7 @@ def main():
                 all_benchmark_results.append(df_results)
                 
             except Exception as e:
-                # Ciche logowanie błędów, by awaria jednego modelu nie wywaliła całego wielogodzinnego benchmarku
+                # Silent error logging, so one model failure doesn't crash entire hours-long benchmark
                 with open("results/error_log.txt", "a") as f:
                     f.write(f"Error: {model_name} on {dataset_name}: {str(e)}\n")
             
@@ -129,23 +129,23 @@ def main():
 
     pbar.close()
 
-    # 2. Agregacja i zapis pliku wyjściowego
+    # 2. Aggregation and saving of the output file
     if all_benchmark_results:
         final_df = pd.concat(all_benchmark_results, ignore_index=True)
-        # Znacznik czasowy, by nie nadpisać testów z wczoraj
+        # Timestamp, to not overwrite yesterday's tests
         timestamp = time.strftime("%Y%m%d-%H%M")
         results_path = f"results/benchmark_master_{timestamp}.csv"
         
-        # Zrzut wszystkiego do pliku CSV gotowego do analizy
+        # Dump everything to a CSV file ready for analysis
         final_df.to_csv(results_path, index=False)
         
         print("\n" + "#"*60)
-        print(f" BENCHMARK ZAKOŃCZONY SUKCESEM")
-        print(f" Wyniki zapisano w: {results_path}")
-        print(f" Czas trwania: {(time.time() - start_time) / 60:.2f} minut")
+        print(f" BENCHMARK FINISHED SUCCESSFULLY")
+        print(f" Results saved in: {results_path}")
+        print(f" Duration: {(time.time() - start_time) / 60:.2f} minutes")
         print("#"*60)
     else:
-        print("\n Benchmark nie wygenerował żadnych wyników. Sprawdź results/error_log.txt")
+        print("\n Benchmark did not generate any results. Check results/error_log.txt")
 
 if __name__ == "__main__":
     main()

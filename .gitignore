@@ -1,34 +1,21 @@
-# Środowiska wirtualne
 venv/
 .venv/
 env/
-
-# Pamięć podręczna Pythona i pliki skompilowane
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-
-# Jupyter Notebooks
 .ipynb_checkpoints/
-
-# Katalogi z danymi (Zabezpieczenie przed komitowaniem danych)
 data/raw/*
 data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
-
-# MLflow, Weights & Biases i inne logi
 mlruns/
 wandb/
 *.log
 checkpoints/
 saved_models/
-
-# Konfiguracje IDE (VS Code, PyCharm itp.)
 .vscode/
 .idea/
-
-# Pliki systemowe
 .DS_Store
 Thumbs.db

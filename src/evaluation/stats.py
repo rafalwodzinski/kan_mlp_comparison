@@ -5,32 +5,32 @@ from typing import Dict, List, Tuple, Any
 
 class FrequentistEvaluator:
     """
-    Moduł do rygorystycznej statystyki częstościowej wyników eksperymentów ML.
-    Oparty na rekomendacjach J. Demšara (2006) dla porównywania klasyfikatorów.
+    Module for rigorous frequentist statistics of ML experiment results.
+    Based on J. Demšar's (2006) recommendations for comparing classifiers.
     """
     def __init__(self, alpha: float = 0.05):
         """
         Args:
-            alpha (float): Poziom istotności statystycznej (domyślnie 5%).
+            alpha (float): Statistical significance level (default 5%).
         """
         self.alpha = alpha
 
     def run_friedman_test(self, df: pd.DataFrame, metric: str = 'mcc') -> Dict[str, Any]:
         """
-        Przeprowadza nieparametryczny test Friedmana dla wielu modeli na podstawie dataframe'u.
+        Performs non-parametric Friedman test for multiple models based on a dataframe.
         
         Args:
-            df (pd.DataFrame): Ramka danych z kolumnami m.in. 'dataset', 'model', oraz kolumną z metryką.
-            metric (str): Nazwa kolumny z metryką (np. 'mcc', 'auroc').
+            df (pd.DataFrame): Dataframe with columns including 'dataset', 'model', and metric column.
+            metric (str): Name of metric column (e.g., 'mcc', 'auroc').
             
         Returns:
-            Dict: Wyniki testu statystycznego.
+            Dict: Statistical test results.
         """
-        # Obliczenie średniego wyniku per zbiór danych i per model (uśrednianie foldów przed testem Friedmana)
-        # Demšar rekomenduje porównywanie modeli na podstawie wyników ze zbiorów danych.
+        # Calculate mean score per dataset and per model (averaging folds before Friedman test)
+        # Demšar recommends comparing models based on dataset results.
         agg_df = df.groupby(['dataset', 'model'])[metric].mean().unstack()
         
-        # Pobieramy wyniki jako listę tablic dla każdego modelu
+        # Extract scores as a list of arrays for each model
         model_scores = [agg_df[model].values for model in agg_df.columns]
         
         stat, p_value = friedmanchisquare(*model_scores)
@@ -39,21 +39,21 @@ class FrequentistEvaluator:
             "statistic": float(stat),
             "p_value": float(p_value),
             "significant": p_value < self.alpha,
-            "conclusion": "Odrzucamy H0 - istnieje statystycznie istotna różnica między modelami" if p_value < self.alpha else "Brak podstaw do odrzucenia H0"
+            "conclusion": "Reject H0 - there is a statistically significant difference between models" if p_value < self.alpha else "No grounds to reject H0"
         }
 
     def run_wilcoxon_post_hoc(self, df: pd.DataFrame, baseline_model: str, competitor_models: List[str], metric: str = 'mcc') -> pd.DataFrame:
         """
-        Przeprowadza test Wilcoxona dla par powiązanych (np. porównanie KAN vs MLP) z poprawką Holm-Bonferroni.
+        Performs Wilcoxon signed-rank test for paired samples (e.g. KAN vs MLP comparison) with Holm-Bonferroni correction.
         
         Args:
-            df (pd.DataFrame): Wyniki eksperymentów.
-            baseline_model (str): Nazwa modelu bazowego (np. 'StandardMLP').
-            competitor_models (List[str]): Lista modeli do porównania.
-            metric (str): Wybrana metryka.
+            df (pd.DataFrame): Experiment results.
+            baseline_model (str): Name of baseline model (e.g. 'StandardMLP').
+            competitor_models (List[str]): List of models to compare.
+            metric (str): Selected metric.
             
         Returns:
-            pd.DataFrame: Wyniki testów post-hoc z poprawkami p-value.
+            pd.DataFrame: Post-hoc test results with p-value corrections.
         """
         agg_df = df.groupby(['dataset', 'model'])[metric].mean().unstack()
         baseline_scores = agg_df[baseline_model].values
@@ -82,12 +82,12 @@ class FrequentistEvaluator:
         res_df = pd.DataFrame(results)
         
         if not res_df.empty:
-            # Poprawka Holm-Bonferroni
+            # Holm-Bonferroni correction
             res_df = res_df.sort_values("Unadjusted p-value").reset_index(drop=True)
             m = len(res_df)
             holm_p = [min(1.0, res_df.loc[i, "Unadjusted p-value"] * (m - i)) for i in range(m)]
             
-            # Gwarancja niemalejącej sekwencji
+            # Guarantee non-decreasing sequence
             for i in range(1, m):
                 holm_p[i] = max(holm_p[i], holm_p[i-1])
                 

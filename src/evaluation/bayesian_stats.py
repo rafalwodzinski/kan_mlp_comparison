@@ -5,52 +5,52 @@ from typing import Dict
 
 class BayesianEvaluator:
     """
-    Implementacja Bayesian Correlated t-test do rygorystycznego porównywania modeli
-    na wynikach z walidacji krzyżowej (k-Fold CV).
-    Korzysta z poprawki Benavoli et al. (2017) chroniącej przed sztucznym zawyżaniem pewności.
+    Implementation of Bayesian Correlated t-test for rigorous model comparison
+    on cross-validation (k-Fold CV) results.
+    Uses Benavoli et al. (2017) correction protecting against artificial confidence inflation.
     """
     def __init__(self, rope_interval: float = 0.01, k_folds: int = 5):
         """
         Args:
-            rope_interval (float): Szerokość przedziału praktycznej równoważności (ROPE).
-                                   Np. 0.01 to 1% różnicy.
-            k_folds (int): Liczba foldów w cross-walidacji.
+            rope_interval (float): Width of Region of Practical Equivalence (ROPE).
+                                   E.g. 0.01 is 1% difference.
+            k_folds (int): Number of folds in cross-validation.
         """
         self.rope_interval = rope_interval
         self.k_folds = k_folds
 
     def bayesian_correlated_ttest(self, df: pd.DataFrame, model_a: str, model_b: str, metric: str = 'mcc') -> Dict[str, float]:
         """
-        Wykonuje Bayesian Correlated t-test używając wyników na poziomie FOLDÓW.
+        Performs Bayesian Correlated t-test using FOLD-level results.
         
         Args:
-            df (pd.DataFrame): Dataframe z wynikami (wymagane: dataset, model, fold, <metric>).
-            model_a (str): Pierwszy model.
-            model_b (str): Drugi model.
-            metric (str): Nazwa analizowanej metryki.
+            df (pd.DataFrame): Dataframe with results (required: dataset, model, fold, <metric>).
+            model_a (str): First model.
+            model_b (str): Second model.
+            metric (str): Name of the analyzed metric.
             
         Returns:
-            Dict: Prawdopodobieństwa scenariuszy A>B, B>A oraz Remis (ROPE).
+            Dict: Probabilities of scenarios A>B, B>A and Tie (ROPE).
         """
-        # Filtrujemy dane dla obu modeli i upewniamy się, że są równe ilości obserwacji
+        # We filter data for both models and ensure equal number of observations
         df_a = df[df['model'] == model_a].sort_values(['dataset', 'fold'])
         df_b = df[df['model'] == model_b].sort_values(['dataset', 'fold'])
         
         if len(df_a) == 0 or len(df_b) == 0:
-            raise ValueError("Brak wyników dla podanych modeli.")
+            raise ValueError("No results for provided models.")
             
         scores_a = df_a[metric].values
         scores_b = df_b[metric].values
         
         if len(scores_a) != len(scores_b):
-            raise ValueError("Różna liczba wyników dla modeli (niekompletne cross-walidacje?).")
+            raise ValueError("Different number of results for models (incomplete cross-validations?).")
             
         differences = scores_a - scores_b
         n = len(differences)
         mean_diff = np.mean(differences)
         std_diff = np.std(differences, ddof=1)
         
-        # W przypadku identycznych wyników (odchylenie standardowe = 0)
+        # In case of identical results (standard deviation = 0)
         if std_diff == 0:
             if mean_diff > self.rope_interval:
                 return {"prob_A_better": 1.0, "prob_B_better": 0.0, "prob_ROPE": 0.0, "mean_diff": mean_diff}
@@ -59,18 +59,18 @@ class BayesianEvaluator:
             else:
                 return {"prob_A_better": 0.0, "prob_B_better": 0.0, "prob_ROPE": 1.0, "mean_diff": mean_diff}
         
-        # Korekta Benavoli et al. (2017) dla skorelowanych prób w k-Fold CV.
-        # Niezależność prób jest naruszona przez powielanie zbioru treningowego w CV.
+        # Benavoli et al. (2017) correction for correlated samples in k-Fold CV.
+        # Independence of samples is violated by repeating the training set in CV.
         rho = 1 / self.k_folds
         
-        # Nowe odchylenie standardowe uwzględniające korelację
+        # New standard deviation accounting for correlation
         adjusted_std = std_diff * np.sqrt((1/n) + (rho / (1 - rho)))
         
-        # Stopnie swobody
+        # Degrees of freedom
         df_t = n - 1
         
-        # Całkujemy gęstość rozkładu t-Studenta w odpowiednich przedziałach
-        # P(Różnica mieści się w ROPE): P(-rope < diff < rope)
+        # We integrate the Student's t-distribution density in appropriate intervals
+        # P(Difference falls within ROPE): P(-rope < diff < rope)
         prob_rope = stats.t.cdf(self.rope_interval, df_t, loc=mean_diff, scale=adjusted_std) - \
                     stats.t.cdf(-self.rope_interval, df_t, loc=mean_diff, scale=adjusted_std)
         

@@ -7,15 +7,15 @@ import sys
 import os
 import json
 
-# Dodanie ścieżki do importu z innych folderów src
+# Add path to import from other src folders
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from evaluation.metrics import MedicalMetricsEvaluator
 
 class TabularTrainer:
     """
-    Modularna klasa treningowa dla modeli KAN i MLP.
-    Wersja 'Lite' - bez zależności od MLflow. Wypisuje logi do konsoli 
-    oraz zapisuje wagi i macierz pomyłek na dysk.
+    Modular training class for KAN and MLP models.
+    'Lite' version - without MLflow dependency. Logs to console 
+    and saves weights and confusion matrix to disk.
     """
     def __init__(
         self, 
@@ -43,7 +43,7 @@ class TabularTrainer:
         self.history = {'train_loss': [], 'val_loss': [], 'val_mcc': [], 'val_auroc': []}
 
     def train_epoch(self, dataloader: DataLoader) -> float:
-        """Przeprowadza jedną epokę treningową."""
+        """Performs one training epoch."""
         self.model.train()
         total_loss = 0.0
         
@@ -54,7 +54,7 @@ class TabularTrainer:
             logits = self.model(X_batch)
             
             if self.is_binary:
-                # BEZPIECZNE ŚCISKANIE: dim=-1 chroni przed błędem gdy batch_size = 1
+                # SAFE SQUEEZE: dim=-1 protects against error when batch_size = 1
                 loss = self.criterion(logits.squeeze(dim=-1), y_batch.float()) 
             else:
                 loss = self.criterion(logits, y_batch)
@@ -66,7 +66,7 @@ class TabularTrainer:
         return total_loss / len(dataloader)
 
     def evaluate(self, dataloader: DataLoader) -> Dict[str, Any]:
-        """Ewaluacja modelu na zbiorze walidacyjnym/testowym z pełnymi metrykami."""
+        """Model evaluation on validation/test set with full metrics."""
         self.model.eval()
         total_loss = 0.0
         
@@ -79,7 +79,7 @@ class TabularTrainer:
                 logits = self.model(X_batch)
                 
                 if self.is_binary:
-                    # BEZPIECZNE ŚCISKANIE (czystszy kod)
+                    # SAFE SQUEEZE (cleaner code)
                     logits_squeezed = logits.squeeze(dim=-1)
                     loss = self.criterion(logits_squeezed, y_batch.float())
                     probs = torch.sigmoid(logits_squeezed)
@@ -103,34 +103,34 @@ class TabularTrainer:
         return metrics
 
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int, run_params: dict):
-        """Główna pętla treningowa (czysty PyTorch + print)."""
-        print(f"\n[{self.experiment_name}] Rozpoczęcie treningu...")
+        """Main training loop (pure PyTorch + print)."""
+        print(f"\n[{self.experiment_name}] Starting training...")
         
         for epoch in range(epochs):
             train_loss = self.train_epoch(train_loader)
             val_metrics = self.evaluate(val_loader)
             
-            # Zapis do historii
+            # Save to history
             self.history['train_loss'].append(train_loss)
             self.history['val_loss'].append(val_metrics['loss'])
             self.history['val_mcc'].append(val_metrics['mcc'])
             self.history['val_auroc'].append(val_metrics['auroc'])
             
-            # Wypisywanie logów w konsoli
+            # Print logs in console
             print(f"Epoch {epoch+1:03d}/{epochs} | Train Loss: {train_loss:.4f} | "
                   f"Val Loss: {val_metrics['loss']:.4f} | Val MCC: {val_metrics['mcc']:.4f} | "
                   f"Val AUROC: {val_metrics['auroc']:.4f}")
         
-        # Ostateczna struktura katalogów artefaktów
+        # Final artifacts directory structure
         save_dir = f"results/artifacts/{self.dataset_name}/{self.model_name}"
         os.makedirs(save_dir, exist_ok=True)
         
-        # Ścieżki docelowe
+        # Target paths
         weights_path = os.path.join(save_dir, f"{self.experiment_name}_weights.pth")
         cm_path = os.path.join(save_dir, f"{self.experiment_name}_confusion_matrix.csv")
         history_path = os.path.join(save_dir, f"{self.experiment_name}_history.json")
         
-        # Zapis Artefaktów
+        # Save Artifacts
         torch.save(self.model.state_dict(), weights_path)
         
         if self.last_confusion_matrix is not None:
@@ -139,4 +139,4 @@ class TabularTrainer:
         with open(history_path, "w") as f:
             json.dump(self.history, f, indent=4)
             
-        print(f"[{self.experiment_name}] Trening zakończony. Zapisano artefakty do {save_dir}")
+        print(f"[{self.experiment_name}] Training finished. Artifacts saved to {save_dir}")
