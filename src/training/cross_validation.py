@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import RepeatedStratifiedKFold
 from torch.utils.data import DataLoader
 from typing import Dict, List, Any, Type
 import os
@@ -18,9 +18,10 @@ class CrossValidator:
     Guarantees experiment purity in each fold by independently training
     the Preprocessor object (prevents data leakage).
     """
-    def __init__(self, k_folds: int = 5, random_state: int = 42):
+    def __init__(self, k_folds: int = 5, n_repeats: int = 3, random_state: int = 42):
         self.k_folds = k_folds
-        self.skf = StratifiedKFold(n_splits=k_folds, shuffle=True, random_state=random_state)
+        self.n_repeats = n_repeats
+        self.rskf = RepeatedStratifiedKFold(n_splits=k_folds, n_repeats=n_repeats, random_state=random_state)
 
     def run(self, 
             model_class: Type, 
@@ -34,12 +35,14 @@ class CrossValidator:
         X_raw, y_raw, preprocessor = get_data_and_preprocessor(args.data_path, dataset_filename)
         all_fold_metrics = []
 
-        print(f"\n[CV] Starting {self.k_folds}-fold CV for {args.model_name} model...")
+        print(f"\n[CV] Starting {self.n_repeats}x{self.k_folds}-fold CV for {args.model_name} model...")
         print(f"[CV] Dataset: {dataset_name} | Sample size: {len(X_raw)}")
 
         # Main CV loop on RAW data
-        for fold, (train_idx, val_idx) in enumerate(self.skf.split(X_raw, y_raw)):
-            print(f"\n>>> FOLD {fold+1}/{self.k_folds}")
+        for idx, (train_idx, val_idx) in enumerate(self.rskf.split(X_raw, y_raw)):
+            repeat = (idx // self.k_folds) + 1
+            fold = (idx % self.k_folds) + 1
+            print(f"\n>>> REPEAT {repeat}/{self.n_repeats} | FOLD {fold}/{self.k_folds}")
 
             # Extract raw folds
             X_train_raw, X_val_raw = X_raw.iloc[train_idx], X_raw.iloc[val_idx]
@@ -77,7 +80,7 @@ class CrossValidator:
                 input_dim=input_dim
             )
             best_params = tuner.optimize(n_trials=15)
-            print(f"[CV] Best params for Fold {fold+1}: {best_params}")
+            print(f"[CV] Best params for Repeat {repeat} Fold {fold}: {best_params}")
 
             # 5. Final Model Initialization (Reset weights per fold!)
             if issubclass(model_class, BaseEstimator):
@@ -112,11 +115,13 @@ class CrossValidator:
                 is_binary=is_binary,
                 dataset_name=dataset_name,
                 model_name=args.model_name,
-                fold=fold+1
+                repeat=repeat,
+                fold=fold
             )
             
             run_params = vars(args)
-            run_params["fold"] = fold + 1
+            run_params["repeat"] = repeat
+            run_params["fold"] = fold
             
             # 7. Training and Evaluation
             trainer.fit(train_loader, val_loader, epochs=args.epochs, run_params=run_params)
@@ -125,12 +130,13 @@ class CrossValidator:
             # Save best_params to artifacts
             save_dir = f"results/artifacts/{dataset_name}/{args.model_name}"
             os.makedirs(save_dir, exist_ok=True)
-            params_path = os.path.join(save_dir, f"{dataset_name}_{args.model_name}_Fold{fold+1}_best_params.json")
+            params_path = os.path.join(save_dir, f"{dataset_name}_{args.model_name}_Repeat{repeat}_Fold{fold}_best_params.json")
             with open(params_path, "w") as f:
                 json.dump(best_params, f, indent=4)
             
             # Add metadata to metrics, so we know what to merge this with
-            metrics['fold'] = fold + 1
+            metrics['repeat'] = repeat
+            metrics['fold'] = fold
             metrics['model'] = args.model_name
             metrics['dataset'] = dataset_name
             
