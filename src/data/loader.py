@@ -73,10 +73,10 @@ def get_data_and_preprocessor(filepath: str, dataset_filename: str):
         # Clean datasets or small number of missing values - use outlier-resistant median
         num_imputer = SimpleImputer(strategy='median')
 
-    # Scaling before imputation (especially important for KNNImputer based on Euclidean distances)
+    # Imputation FIRST, then scaling — prevents NaN from contaminating scaler statistics.
     numeric_transformer = Pipeline(steps=[
-        ('scaler', StandardScaler()),
-        ('imputer', num_imputer)
+        ('imputer', num_imputer),
+        ('scaler', StandardScaler())
     ])
 
     # Categorical transformer (always uses mode and One-Hot encoding)

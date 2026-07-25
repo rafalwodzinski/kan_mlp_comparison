@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.base import BaseEstimator
 from sklearn.metrics import log_loss
 from optuna.pruners import MedianPruner
+import inspect
 
 from src.data.loader import MedicalTabularDataset
 
@@ -68,8 +69,23 @@ class OptunaTuner:
                 hidden_dim = trial.suggest_categorical('hidden_dim', [32, 64, 128])
                 model_kwargs['hidden_dims'] = [hidden_dim, hidden_dim // 2]
             elif "KAN" in self.model_class.__name__:
-                grid_size = trial.suggest_categorical('grid_size', [3, 5, 10])
-                model_kwargs['grid_size'] = grid_size
+                # Dynamically detect the correct capacity hyperparameter
+                # for each KAN variant (grid_size, num_grids, degree, num_wavelets)
+                sig = inspect.signature(self.model_class.__init__)
+                params = sig.parameters
+                
+                if 'grid_size' in params:
+                    grid_size = trial.suggest_categorical('grid_size', [3, 5, 10])
+                    model_kwargs['grid_size'] = grid_size
+                elif 'num_grids' in params:
+                    num_grids = trial.suggest_categorical('num_grids', [4, 8, 12])
+                    model_kwargs['num_grids'] = num_grids
+                elif 'degree' in params:
+                    degree = trial.suggest_categorical('degree', [3, 4, 6])
+                    model_kwargs['degree'] = degree
+                elif 'num_wavelets' in params:
+                    num_wavelets = trial.suggest_categorical('num_wavelets', [4, 8, 12])
+                    model_kwargs['num_wavelets'] = num_wavelets
                 
             model = self.model_class(**model_kwargs).to(self.device)
             optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)

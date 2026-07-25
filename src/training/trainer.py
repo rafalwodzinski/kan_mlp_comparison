@@ -59,6 +59,9 @@ class TabularTrainer:
         # Time tracking metrics
         self.avg_epoch_time_seconds = 0.0
         self.total_train_time_seconds = 0.0
+        self.inference_time_ms = 0.0
+        self.inference_time_per_sample_ms = 0.0
+        self.inference_time_total_seconds = 0.0
 
     def train_epoch(self, dataloader: DataLoader) -> float:
         """Performs one training epoch."""
@@ -84,7 +87,9 @@ class TabularTrainer:
         return total_loss / len(dataloader)
 
     def evaluate(self, dataloader: DataLoader) -> Dict[str, Any]:
-        """Model evaluation on validation/test set with full metrics."""
+        """Model evaluation on validation/test set with full metrics and inference timing."""
+        inference_start = time.time()
+        
         if self.is_sklearn:
             all_preds = []
             all_trues = []
@@ -96,11 +101,21 @@ class TabularTrainer:
                 all_preds.append(probs)
                 all_trues.append(y_batch.numpy())
             
+            inference_end = time.time()
+            
             y_prob_all = np.concatenate(all_preds, axis=0)
             y_true_all = np.concatenate(all_trues, axis=0)
             
+            total_samples = len(y_true_all)
+            self.inference_time_total_seconds = inference_end - inference_start
+            self.inference_time_ms = (self.inference_time_total_seconds / total_samples) * 1000
+            self.inference_time_per_sample_ms = self.inference_time_ms
+            
             metrics = self.evaluator.calculate_metrics(y_true_all, y_prob_all)
             metrics["loss"] = log_loss(y_true_all, y_prob_all)
+            metrics["inference_time_ms"] = self.inference_time_ms
+            metrics["inference_time_per_sample_ms"] = self.inference_time_per_sample_ms
+            metrics["inference_time_total_seconds"] = self.inference_time_total_seconds
             self.last_confusion_matrix = self.evaluator.get_confusion_matrix(y_true_all, y_prob_all)
             return metrics
             
@@ -132,8 +147,18 @@ class TabularTrainer:
         y_prob_all = np.concatenate(all_preds, axis=0)
         y_true_all = np.concatenate(all_trues, axis=0)
         
+        inference_end = time.time()
+        
+        total_samples = len(y_true_all)
+        self.inference_time_total_seconds = inference_end - inference_start
+        self.inference_time_ms = (self.inference_time_total_seconds / total_samples) * 1000
+        self.inference_time_per_sample_ms = self.inference_time_ms
+        
         metrics = self.evaluator.calculate_metrics(y_true_all, y_prob_all)
         metrics["loss"] = total_loss / len(dataloader)
+        metrics["inference_time_ms"] = self.inference_time_ms
+        metrics["inference_time_per_sample_ms"] = self.inference_time_per_sample_ms
+        metrics["inference_time_total_seconds"] = self.inference_time_total_seconds
         
         self.last_confusion_matrix = self.evaluator.get_confusion_matrix(y_true_all, y_prob_all)
                 

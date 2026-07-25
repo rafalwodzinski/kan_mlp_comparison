@@ -104,8 +104,11 @@ class CrossValidator:
                 
                 if 'hidden_dim' in best_params:
                     model_kwargs['hidden_dims'] = [best_params['hidden_dim'], best_params['hidden_dim'] // 2]
-                if 'grid_size' in best_params:
-                    model_kwargs['grid_size'] = best_params['grid_size']
+                
+                # Propagate the correct KAN capacity hyperparameter from HPO
+                for kan_param in ('grid_size', 'num_grids', 'degree', 'num_wavelets'):
+                    if kan_param in best_params:
+                        model_kwargs[kan_param] = best_params[kan_param]
                     
                 model = model_class(**model_kwargs)
                 
@@ -157,6 +160,10 @@ class CrossValidator:
                 
             metrics['avg_epoch_time_seconds'] = trainer.avg_epoch_time_seconds
             metrics['total_train_time_seconds'] = trainer.total_train_time_seconds
+            metrics['inference_time_ms'] = getattr(trainer, 'inference_time_ms', trainer.inference_time_per_sample_ms)
+            metrics['inference_time_per_sample_ms'] = metrics['inference_time_ms']
+            metrics['inference_time_total_seconds'] = trainer.inference_time_total_seconds
+            metrics['brier_score'] = metrics.get('brier_score', float('nan'))
             
             all_fold_metrics.append(metrics)
 

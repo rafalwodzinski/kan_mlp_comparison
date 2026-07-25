@@ -1,9 +1,10 @@
 import numpy as np
 from sklearn.metrics import (
-    accuracy_score, balanced_accuracy_score, precision_score,
+    balanced_accuracy_score, precision_score,
     recall_score, f1_score, matthews_corrcoef, roc_auc_score,
-    confusion_matrix
+    brier_score_loss, confusion_matrix
 )
+from sklearn.preprocessing import label_binarize
 from typing import Dict, Any, Tuple, Optional
 import logging
 
@@ -40,7 +41,6 @@ class MedicalMetricsEvaluator:
             y_pred = np.argmax(y_prob, axis=1)
 
         metrics = {
-            "accuracy": accuracy_score(y_true, y_pred),
             "balanced_accuracy": balanced_accuracy_score(y_true, y_pred),
             "precision": precision_score(y_true, y_pred, average=self.average_method, zero_division=0),
             "recall": recall_score(y_true, y_pred, average=self.average_method, zero_division=0),
@@ -73,6 +73,21 @@ class MedicalMetricsEvaluator:
         except Exception as e:
             logging.error(f"AUROC calculation failed: {str(e)}. Setting AUROC to np.nan.")
             metrics["auroc"] = np.nan
+
+        # Brier Score — probability calibration metric (lower is better)
+        # Critical for medical ML: measures if predicted probabilities match observed frequencies
+        try:
+            if self.is_binary:
+                metrics["brier_score"] = brier_score_loss(y_true, y_prob)
+            else:
+                # Multiclass Brier via one-vs-all decomposition (Ferro & Fricker, 2012)
+                classes = np.arange(y_prob.shape[1])
+                y_true_bin = label_binarize(y_true, classes=classes)
+                # Mean squared error between one-hot true and predicted probabilities
+                metrics["brier_score"] = float(np.mean(np.sum((y_true_bin - y_prob) ** 2, axis=1)))
+        except Exception as e:
+            logging.error(f"Brier Score calculation failed: {str(e)}. Setting to np.nan.")
+            metrics["brier_score"] = np.nan
 
         return metrics
 
