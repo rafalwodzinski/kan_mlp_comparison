@@ -32,6 +32,7 @@ class TabularTrainer:
         is_binary: bool = True,
         dataset_name: str = "Dataset",
         model_name: str = "Model",
+        repeat: int = 1,
         fold: int = 1
     ):
         self.model = model.to(device)
@@ -41,8 +42,9 @@ class TabularTrainer:
         self.is_binary = is_binary
         self.dataset_name = dataset_name
         self.model_name = model_name
+        self.repeat = repeat
         self.fold = fold
-        self.experiment_name = f"{dataset_name}_{model_name}_Fold{fold}"
+        self.experiment_name = f"{dataset_name}_{model_name}_Repeat{repeat}_Fold{fold}"
         
         self.is_sklearn = isinstance(model, BaseEstimator)
         if not self.is_sklearn:
