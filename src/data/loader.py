@@ -52,9 +52,17 @@ def get_data_and_preprocessor(filepath: str, dataset_filename: str):
     X = df.drop(columns=[target_col])
 
     # 4. Automatic column type detection
-    numeric_features = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
-    # Type safety: catch all remaining columns as categorical, so remainder='drop' doesn't discard data
-    categorical_features = X.columns.difference(numeric_features).tolist()
+    numeric_candidates = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
+    
+    numeric_features = []
+    categorical_features = []
+    
+    for col in X.columns:
+        # Route to numeric ONLY if it is of numeric type AND has >= 10 unique values
+        if col in numeric_candidates and X[col].nunique() >= 10:
+            numeric_features.append(col)
+        else:
+            categorical_features.append(col)
 
     # 5. Build Pipelines
     # Choose numeric imputer based on dataset specificity

@@ -5,6 +5,7 @@ from sklearn.metrics import (
     confusion_matrix
 )
 from typing import Dict, Any, Tuple, Optional
+import logging
 
 class MedicalMetricsEvaluator:
     """
@@ -53,7 +54,7 @@ class MedicalMetricsEvaluator:
                 if len(np.unique(y_true)) > 1:
                     metrics["auroc"] = roc_auc_score(y_true, y_prob)
                 else:
-                    metrics["auroc"] = metrics["balanced_accuracy"]
+                    metrics["auroc"] = np.nan
             else:
                 present_classes = np.unique(y_true)
                 if len(present_classes) == y_prob.shape[1]:
@@ -64,15 +65,14 @@ class MedicalMetricsEvaluator:
                     # We rescale probabilities back to 1
                     y_prob_filtered = y_prob_filtered / (y_prob_filtered.sum(axis=1, keepdims=True) + 1e-8)
                     metrics["auroc"] = roc_auc_score(y_true, y_prob_filtered, multi_class="ovr", average="macro", labels=present_classes)
-                    print(f"[Warning] Missing classes in AUROC evaluation. Calculated for {len(present_classes)}/{y_prob.shape[1]} classes.")
+                    logging.warning(f"Missing classes in AUROC evaluation. Calculated for {len(present_classes)}/{y_prob.shape[1]} classes.")
                 else:
                     # In case of only one class in the set (extreme test/validation data leakage)
-                    metrics["auroc"] = metrics["balanced_accuracy"]
-                    print("[Warning] Only one class in y_true! AUROC impossible, used balanced_accuracy as fallback.")
+                    metrics["auroc"] = np.nan
+                    logging.warning("Only one class in y_true! AUROC impossible, set to np.nan.")
         except Exception as e:
-            # Ironclad safeguard against crash breaking statistics - we never return np.nan
-            print(f"[Error AUROC] {str(e)}. Fallback to balanced_accuracy.")
-            metrics["auroc"] = metrics["balanced_accuracy"]
+            logging.error(f"AUROC calculation failed: {str(e)}. Setting AUROC to np.nan.")
+            metrics["auroc"] = np.nan
 
         return metrics
 
