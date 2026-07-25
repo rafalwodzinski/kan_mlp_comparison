@@ -6,6 +6,7 @@ from sklearn.model_selection import StratifiedKFold
 from torch.utils.data import DataLoader
 from typing import Dict, List, Any, Type
 import os
+from sklearn.base import BaseEstimator
 
 from src.data.loader import MedicalTabularDataset, get_data_and_preprocessor
 
@@ -62,11 +63,15 @@ class CrossValidator:
             num_classes = len(np.unique(y_raw))
             is_binary = (num_classes == 2)
             
-            model = model_class(input_dim=input_dim, output_dim=1 if is_binary else num_classes)
-            
-            # 5. Optimizer and loss function configuration
-            optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
-            criterion = nn.BCEWithLogitsLoss() if is_binary else nn.CrossEntropyLoss()
+            if issubclass(model_class, BaseEstimator):
+                model = model_class(random_state=args.random_state if hasattr(args, 'random_state') else 42)
+                optimizer = None
+                criterion = None
+            else:
+                model = model_class(input_dim=input_dim, output_dim=1 if is_binary else num_classes)
+                # 5. Optimizer and loss function configuration
+                optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+                criterion = nn.BCEWithLogitsLoss() if is_binary else nn.CrossEntropyLoss()
 
             # 6. Initialization of your 'clean' Trainer (without MLflow)
             trainer = trainer_class(
@@ -91,7 +96,12 @@ class CrossValidator:
             metrics['fold'] = fold + 1
             metrics['model'] = args.model_name
             metrics['dataset'] = dataset_name
-            metrics['trainable_parameters'] = model.get_num_parameters()
+            
+            if isinstance(model, BaseEstimator):
+                metrics['trainable_parameters'] = 0
+            else:
+                metrics['trainable_parameters'] = model.get_num_parameters()
+                
             metrics['avg_epoch_time_seconds'] = trainer.avg_epoch_time_seconds
             metrics['total_train_time_seconds'] = trainer.total_train_time_seconds
             

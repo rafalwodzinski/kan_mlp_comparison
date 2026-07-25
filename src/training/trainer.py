@@ -8,6 +8,9 @@ import os
 import json
 import time
 import matplotlib.pyplot as plt
+import joblib
+from sklearn.base import BaseEstimator
+from sklearn.metrics import log_loss
 
 # Add path to import from other src folders
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -41,6 +44,12 @@ class TabularTrainer:
         self.fold = fold
         self.experiment_name = f"{dataset_name}_{model_name}_Fold{fold}"
         
+        self.is_sklearn = isinstance(model, BaseEstimator)
+        if not self.is_sklearn:
+            self.model = model.to(device)
+        else:
+            self.model = model
+            
         self.evaluator = MedicalMetricsEvaluator(is_binary=self.is_binary)
         self.last_confusion_matrix = None
         self.history = {'train_loss': [], 'val_loss': [], 'val_mcc': [], 'val_auroc': []}
@@ -74,6 +83,25 @@ class TabularTrainer:
 
     def evaluate(self, dataloader: DataLoader) -> Dict[str, Any]:
         """Model evaluation on validation/test set with full metrics."""
+        if self.is_sklearn:
+            all_preds = []
+            all_trues = []
+            for X_batch, y_batch in dataloader:
+                X_batch_np = X_batch.numpy()
+                probs = self.model.predict_proba(X_batch_np)
+                if self.is_binary:
+                    probs = probs[:, 1]
+                all_preds.append(probs)
+                all_trues.append(y_batch.numpy())
+            
+            y_prob_all = np.concatenate(all_preds, axis=0)
+            y_true_all = np.concatenate(all_trues, axis=0)
+            
+            metrics = self.evaluator.calculate_metrics(y_true_all, y_prob_all)
+            metrics["loss"] = log_loss(y_true_all, y_prob_all)
+            self.last_confusion_matrix = self.evaluator.get_confusion_matrix(y_true_all, y_prob_all)
+            return metrics
+            
         self.model.eval()
         total_loss = 0.0
         
@@ -110,9 +138,50 @@ class TabularTrainer:
         return metrics
 
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int, run_params: dict):
-        """Main training loop (pure PyTorch + print)."""
+        """Main training loop (pure PyTorch + print) or scikit-learn fitting."""
         print(f"\n[{self.experiment_name}] Starting training...")
         
+        start_time = time.time()
+        
+        # Final artifacts directory structure
+        save_dir = f"results/artifacts/{self.dataset_name}/{self.model_name}"
+        os.makedirs(save_dir, exist_ok=True)
+        
+        if self.is_sklearn:
+            # Bypass PyTorch loops for scikit-learn
+            X_all, y_all = [], []
+            for X_batch, y_batch in train_loader:
+                X_all.append(X_batch.numpy())
+                y_all.append(y_batch.numpy())
+            X_train = np.concatenate(X_all, axis=0)
+            y_train = np.concatenate(y_all, axis=0)
+            
+            self.model.fit(X_train, y_train)
+            
+            end_time = time.time()
+            self.total_train_time_seconds = end_time - start_time
+            self.avg_epoch_time_seconds = 0.0
+            
+            val_metrics = self.evaluate(val_loader)
+            print(f"[{self.experiment_name}] Sklearn Model Fit | Val Loss: {val_metrics['loss']:.4f} | "
+                  f"Val MCC: {val_metrics['mcc']:.4f} | Val AUROC: {val_metrics['auroc']:.4f}")
+                  
+            # Target paths for sklearn
+            weights_path = os.path.join(save_dir, f"{self.experiment_name}_weights.joblib")
+            cm_path = os.path.join(save_dir, f"{self.experiment_name}_confusion_matrix.csv")
+            history_path = os.path.join(save_dir, f"{self.experiment_name}_history.json")
+            
+            joblib.dump(self.model, weights_path)
+            
+            if self.last_confusion_matrix is not None:
+                np.savetxt(cm_path, self.last_confusion_matrix, delimiter=",", fmt='%d')
+                
+            with open(history_path, "w") as f:
+                json.dump(self.history, f, indent=4)
+                
+            print(f"[{self.experiment_name}] Training finished. Artifacts saved to {save_dir}")
+            return
+            
         # Configure Early Stopping
         patience = run_params.get("patience", 10)
         early_stopping = EarlyStopping(patience=patience, min_delta=1e-4, verbose=False)
