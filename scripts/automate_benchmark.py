@@ -31,6 +31,7 @@ from src.models.kan_variants.gram_kan import GramKAN
 from src.models.kan_variants.taylor_kan import TaylorKAN
 from src.models.kan_variants.wav_kan import WavKAN
 from src.models.kan_variants.relu_kan import ReLUKAN
+from sklearn.ensemble import RandomForestClassifier
 
 @dataclass
 class ExperimentArgs:
@@ -74,7 +75,8 @@ def main():
         "GramKAN": GramKAN,
         "TaylorKAN": TaylorKAN,
         "WavKAN": WavKAN,
-        "ReLUKAN": ReLUKAN
+        "ReLUKAN": ReLUKAN,
+        "RandomForest": RandomForestClassifier
     }
 
     os.makedirs("results", exist_ok=True)
