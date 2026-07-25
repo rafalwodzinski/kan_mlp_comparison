@@ -48,6 +48,15 @@ class CrossValidator:
             X_train_raw, X_val_raw = X_raw.iloc[train_idx], X_raw.iloc[val_idx]
             y_train, y_val = y_raw[train_idx], y_raw[val_idx]
 
+            # 1.b Dataset Size Ablation (Subsampling)
+            train_fraction = getattr(args, 'train_fraction', 1.0)
+            if train_fraction < 1.0:
+                from sklearn.model_selection import train_test_split
+                # We strictly truncate the training data, keeping stratify
+                X_train_raw, _, y_train, _ = train_test_split(
+                    X_train_raw, y_train, train_size=train_fraction, stratify=y_train, random_state=42
+                )
+
             # 2. HERMETIC TRANSFORMATION (No Data Leakage!)
             # We learn how to impute and scale ONLY on the training set
             X_train_clean = preprocessor.fit_transform(X_train_raw)
@@ -139,6 +148,7 @@ class CrossValidator:
             metrics['fold'] = fold
             metrics['model'] = args.model_name
             metrics['dataset'] = dataset_name
+            metrics['train_fraction'] = getattr(args, 'train_fraction', 1.0)
             
             if isinstance(model, BaseEstimator):
                 metrics['trainable_parameters'] = 0
