@@ -7,7 +7,7 @@ import torch
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from scripts.automate_benchmark import ExperimentArgs, MODELS
+from scripts.automate_benchmark import ExperimentArgs, MODELS, _detect_device
 from src.training.cross_validation import CrossValidator
 from src.training.trainer import TabularTrainer
 
@@ -51,7 +51,7 @@ def run_ablation_study():
                     batch_size=64,
                     epochs=100, # Handled by Early Stopping
                     lr=0.001,
-                    device="cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+                    device=_detect_device()
                 )
                 
                 # Inject train_fraction parameter

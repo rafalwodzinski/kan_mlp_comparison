@@ -6,18 +6,27 @@ from typing import Dict
 class BayesianEvaluator:
     """
     Implementation of Bayesian Correlated t-test for rigorous model comparison
-    on cross-validation (k-Fold CV) results.
+    on cross-validation (k-Fold CV or Repeated k-Fold CV) results.
     Uses Benavoli et al. (2017) correction protecting against artificial confidence inflation.
+    
+    For Repeated Stratified K-Fold CV (r × k):
+    - Each repeat produces k paired observations (one per fold).
+    - Total paired observations: n = r × k.
+    - The correlation correction rho = 1/k (test set fraction) remains unchanged
+      per Corani & Benavoli (2015), as it captures the train/test overlap *within*
+      each fold regardless of repeat count.
     """
-    def __init__(self, rope_interval: float = 0.01, k_folds: int = 5):
+    def __init__(self, rope_interval: float = 0.01, k_folds: int = 5, n_repeats: int = 3):
         """
         Args:
             rope_interval (float): Width of Region of Practical Equivalence (ROPE).
                                    E.g. 0.01 is 1% difference.
             k_folds (int): Number of folds in cross-validation.
+            n_repeats (int): Number of CV repetitions (1 for standard k-Fold, >1 for Repeated CV).
         """
         self.rope_interval = rope_interval
         self.k_folds = k_folds
+        self.n_repeats = n_repeats
 
     def bayesian_correlated_ttest(self, df: pd.DataFrame, model_a: str, model_b: str, metric: str = 'mcc') -> Dict[str, float]:
         """
@@ -25,6 +34,7 @@ class BayesianEvaluator:
         
         Args:
             df (pd.DataFrame): Dataframe with results (required: dataset, model, fold, <metric>).
+                               If 'repeat' column exists, it is used for proper pairing.
             model_a (str): First model.
             model_b (str): Second model.
             metric (str): Name of the analyzed metric.
@@ -32,9 +42,15 @@ class BayesianEvaluator:
         Returns:
             Dict: Probabilities of scenarios A>B, B>A and Tie (ROPE).
         """
+        # Determine sort columns based on available data
+        sort_cols = ['dataset']
+        if 'repeat' in df.columns:
+            sort_cols.append('repeat')
+        sort_cols.append('fold')
+        
         # We filter data for both models and ensure equal number of observations
-        df_a = df[df['model'] == model_a].sort_values(['dataset', 'fold'])
-        df_b = df[df['model'] == model_b].sort_values(['dataset', 'fold'])
+        df_a = df[df['model'] == model_a].sort_values(sort_cols).reset_index(drop=True)
+        df_b = df[df['model'] == model_b].sort_values(sort_cols).reset_index(drop=True)
         
         if len(df_a) == 0 or len(df_b) == 0:
             raise ValueError("No results for provided models.")
@@ -59,11 +75,13 @@ class BayesianEvaluator:
             else:
                 return {"prob_A_better": 0.0, "prob_B_better": 0.0, "prob_ROPE": 1.0, "mean_diff": mean_diff}
         
-        # Benavoli et al. (2017) correction for correlated samples in k-Fold CV.
-        # Independence of samples is violated by repeating the training set in CV.
+        # Benavoli et al. (2017) / Corani & Benavoli (2015) correction.
+        # rho = n_test / (n_train + n_test) = 1/k for k-fold CV.
+        # This holds for both standard and Repeated CV — the correlation
+        # stems from the train/test overlap fraction, not the repeat count.
         rho = 1 / self.k_folds
         
-        # New standard deviation accounting for correlation
+        # Corrected standard error accounting for correlated observations
         adjusted_std = std_diff * np.sqrt((1/n) + (rho / (1 - rho)))
         
         # Degrees of freedom
