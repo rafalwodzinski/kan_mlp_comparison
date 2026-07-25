@@ -20,6 +20,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.evaluation.stats import FrequentistEvaluator
 from src.evaluation.bayesian_stats import BayesianEvaluator
+from src.evaluation.plot_radar import plot_radar_chart
+from src.evaluation.plot_bayesian import plot_bayesian_rope_evidence
 
 def find_latest_results() -> str:
     """
@@ -319,6 +321,22 @@ def main():
         
         print("\n--> 3. Generating visualizations for publication...")
         generate_plots(df)
+        
+        print("\n--> 3b. Generating multi-dimensional trade-off radar charts...")
+        try:
+            plot_radar_chart(df, output_path="results/plots/radar_chart_tradeoffs.png")
+        except Exception as e:
+            print(f"[Warning] Radar chart generation failed: {e}")
+            
+        print("\n--> 3c. Generating Bayesian ROPE posterior evidence charts...")
+        try:
+            bayes_file = "results/stats_bayesian_rope.csv"
+            if os.path.exists(bayes_file):
+                plot_bayesian_rope_evidence(bayes_file, output_path="results/plots/bayesian_rope_evidence.png")
+            else:
+                plot_bayesian_rope_evidence(df, output_path="results/plots/bayesian_rope_evidence.png")
+        except Exception as e:
+            print(f"[Warning] Bayesian ROPE chart generation failed: {e}")
         
         print("\n--> 4. Generating confusion matrices (Heatmaps)...")
         generate_confusion_matrices(df)
