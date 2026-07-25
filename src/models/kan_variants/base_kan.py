@@ -32,7 +32,7 @@ class KANLinear(nn.Module):
         
         # Parameters normalizing the domain grid
         self.grid = nn.Parameter(
-            torch.linspace(-1, 1, grid_size + spline_order + 1), requires_grad=False
+            torch.linspace(-5, 5, grid_size + spline_order + 1), requires_grad=False
         )
         
         self.reset_parameters()
