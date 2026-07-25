@@ -6,9 +6,11 @@ from sklearn.model_selection import StratifiedKFold
 from torch.utils.data import DataLoader
 from typing import Dict, List, Any, Type
 import os
+import json
 from sklearn.base import BaseEstimator
 
 from src.data.loader import MedicalTabularDataset, get_data_and_preprocessor
+from src.training.hpo import OptunaTuner
 
 class CrossValidator:
     """
@@ -59,18 +61,46 @@ class CrossValidator:
             train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
             val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
 
-            # 4. New Model Initialization (Reset weights per fold!)
+            # 4. Determine classes
             num_classes = len(np.unique(y_raw))
             is_binary = (num_classes == 2)
-            
+
+            # 4. Hyperparameter Optimization (Optuna Light)
+            print(f"[CV] Running Optuna HPO for {args.model_name} (15 trials)...")
+            tuner = OptunaTuner(
+                model_class=model_class,
+                X_train_clean=X_train_clean,
+                y_train=y_train,
+                args=args,
+                is_binary=is_binary,
+                num_classes=num_classes,
+                input_dim=input_dim
+            )
+            best_params = tuner.optimize(n_trials=15)
+            print(f"[CV] Best params for Fold {fold+1}: {best_params}")
+
+            # 5. Final Model Initialization (Reset weights per fold!)
             if issubclass(model_class, BaseEstimator):
-                model = model_class(random_state=args.random_state if hasattr(args, 'random_state') else 42)
+                model = model_class(random_state=args.random_state if hasattr(args, 'random_state') else 42, **best_params)
                 optimizer = None
                 criterion = None
             else:
-                model = model_class(input_dim=input_dim, output_dim=1 if is_binary else num_classes)
-                # 5. Optimizer and loss function configuration
-                optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+                model_kwargs = {
+                    'input_dim': input_dim,
+                    'output_dim': 1 if is_binary else num_classes
+                }
+                
+                if 'hidden_dim' in best_params:
+                    model_kwargs['hidden_dims'] = [best_params['hidden_dim'], best_params['hidden_dim'] // 2]
+                if 'grid_size' in best_params:
+                    model_kwargs['grid_size'] = best_params['grid_size']
+                    
+                model = model_class(**model_kwargs)
+                
+                # Optimizer and loss function configuration
+                lr = best_params.get('lr', args.lr)
+                weight_decay = best_params.get('weight_decay', 1e-4)
+                optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
                 criterion = nn.BCEWithLogitsLoss() if is_binary else nn.CrossEntropyLoss()
 
             # 6. Initialization of your 'clean' Trainer (without MLflow)
@@ -91,6 +121,13 @@ class CrossValidator:
             # 7. Training and Evaluation
             trainer.fit(train_loader, val_loader, epochs=args.epochs, run_params=run_params)
             metrics = trainer.evaluate(val_loader)
+            
+            # Save best_params to artifacts
+            save_dir = f"results/artifacts/{dataset_name}/{args.model_name}"
+            os.makedirs(save_dir, exist_ok=True)
+            params_path = os.path.join(save_dir, f"{dataset_name}_{args.model_name}_Fold{fold+1}_best_params.json")
+            with open(params_path, "w") as f:
+                json.dump(best_params, f, indent=4)
             
             # Add metadata to metrics, so we know what to merge this with
             metrics['fold'] = fold + 1
