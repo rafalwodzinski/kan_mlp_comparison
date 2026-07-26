@@ -70,14 +70,16 @@ class CrossValidator:
             train_dataset = MedicalTabularDataset(X_train_clean, y_train)
             val_dataset = MedicalTabularDataset(X_val_clean, y_val)
 
-            train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+            # Prevent BatchNorm/LayerNorm crash when the last mini-batch has size 1
+            drop_last = (len(train_dataset) > args.batch_size and len(train_dataset) % args.batch_size == 1)
+            train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=drop_last)
             val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
 
             # 4. Determine classes
             num_classes = len(np.unique(y_raw))
             is_binary = (num_classes == 2)
 
-            # 4. Hyperparameter Optimization (Optuna Light)
+            # 5. Hyperparameter Optimization (Optuna Light)
             print(f"[CV] Running Optuna HPO for {args.model_name} (15 trials)...")
             tuner = OptunaTuner(
                 model_class=model_class,
@@ -91,7 +93,7 @@ class CrossValidator:
             best_params = tuner.optimize(n_trials=15)
             print(f"[CV] Best params for Repeat {repeat} Fold {fold}: {best_params}")
 
-            # 5. Final Model Initialization (Reset weights per fold!)
+            # 6. Final Model Initialization (Reset weights per fold!)
             if issubclass(model_class, BaseEstimator):
                 model = model_class(random_state=args.random_state if hasattr(args, 'random_state') else 42, **best_params)
                 optimizer = None
@@ -118,7 +120,7 @@ class CrossValidator:
                 optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
                 criterion = nn.BCEWithLogitsLoss() if is_binary else nn.CrossEntropyLoss()
 
-            # 6. Initialization of your 'clean' Trainer (without MLflow)
+            # 7. Initialization of clean Trainer
             trainer = trainer_class(
                 model=model, 
                 optimizer=optimizer, 
@@ -135,7 +137,7 @@ class CrossValidator:
             run_params["repeat"] = repeat
             run_params["fold"] = fold
             
-            # 7. Training and Evaluation
+            # 8. Training and Evaluation
             trainer.fit(train_loader, val_loader, epochs=args.epochs, run_params=run_params)
             metrics = trainer.evaluate(val_loader)
             
@@ -167,5 +169,5 @@ class CrossValidator:
             
             all_fold_metrics.append(metrics)
 
-        # Return a beautiful Pandas table with results from all folds
+        # Return a clean Pandas table with results from all folds
         return pd.DataFrame(all_fold_metrics)

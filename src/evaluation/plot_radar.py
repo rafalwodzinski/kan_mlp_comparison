@@ -63,11 +63,14 @@ def plot_radar_chart(df: pd.DataFrame,
     
     # 1. Filter models to primary targets of interest
     if primary_models is None:
-        default_targets = ["StandardMLP", "WavKAN", "FastKAN", "RandomForest", "ChebyKAN", "TaylorKAN"]
+        default_targets = [
+            "StandardMLP", "RandomForest", "WavKAN", "FastKAN", "ChebyKAN", 
+            "JacobiKAN", "LegendreKAN", "GramKAN", "TaylorKAN", "ReLUKAN", "TabKAN"
+        ]
         available_models = df['model'].unique().tolist()
         primary_models = [m for m in default_targets if m in available_models]
         if not primary_models:
-            primary_models = available_models[:5] # Fallback to first 5 available
+            primary_models = available_models[:11] # Fallback to first available
             
     df_filtered = df[df['model'].isin(primary_models)].copy()
     
@@ -137,7 +140,7 @@ def plot_radar_chart(df: pd.DataFrame,
     ax.set_ylim(0, 1.05)
     
     # 6. Plot each model on the radar chart
-    colors = sns.color_palette("colorblind", len(df_norm))
+    colors = sns.color_palette("tab20", max(20, len(df_norm)))
     
     for idx, model_name in enumerate(df_norm.index):
         values = df_norm.loc[model_name].tolist()

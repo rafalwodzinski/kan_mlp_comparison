@@ -67,11 +67,12 @@ class BayesianEvaluator:
         std_diff = np.std(differences, ddof=1)
         
         # In case of identical results (standard deviation = 0)
+        is_higher_better = metric.lower() not in ['brier_score', 'loss', 'inference_time_ms', 'inference_time_per_sample_ms', 'total_train_time_seconds', 'trainable_parameters']
         if std_diff == 0:
             if mean_diff > self.rope_interval:
-                return {"prob_A_better": 1.0, "prob_B_better": 0.0, "prob_ROPE": 0.0, "mean_diff": mean_diff}
+                return {"prob_A_better": 1.0 if is_higher_better else 0.0, "prob_B_better": 0.0 if is_higher_better else 1.0, "prob_ROPE": 0.0, "mean_diff": mean_diff}
             elif mean_diff < -self.rope_interval:
-                return {"prob_A_better": 0.0, "prob_B_better": 1.0, "prob_ROPE": 0.0, "mean_diff": mean_diff}
+                return {"prob_A_better": 0.0 if is_higher_better else 1.0, "prob_B_better": 1.0 if is_higher_better else 0.0, "prob_ROPE": 0.0, "mean_diff": mean_diff}
             else:
                 return {"prob_A_better": 0.0, "prob_B_better": 0.0, "prob_ROPE": 1.0, "mean_diff": mean_diff}
         
@@ -92,11 +93,15 @@ class BayesianEvaluator:
         prob_rope = stats.t.cdf(self.rope_interval, df_t, loc=mean_diff, scale=adjusted_std) - \
                     stats.t.cdf(-self.rope_interval, df_t, loc=mean_diff, scale=adjusted_std)
         
-        # P(Model A > Model B + rope): P(diff > rope)
-        prob_a_wins = 1 - stats.t.cdf(self.rope_interval, df_t, loc=mean_diff, scale=adjusted_std)
-        
-        # P(Model B > Model A + rope): P(diff < -rope)
-        prob_b_wins = stats.t.cdf(-self.rope_interval, df_t, loc=mean_diff, scale=adjusted_std)
+        if is_higher_better:
+            # P(Model A > Model B + rope): P(diff > rope)
+            prob_a_wins = 1 - stats.t.cdf(self.rope_interval, df_t, loc=mean_diff, scale=adjusted_std)
+            # P(Model B > Model A + rope): P(diff < -rope)
+            prob_b_wins = stats.t.cdf(-self.rope_interval, df_t, loc=mean_diff, scale=adjusted_std)
+        else:
+            # For lower-is-better, A winning means diff < -rope
+            prob_a_wins = stats.t.cdf(-self.rope_interval, df_t, loc=mean_diff, scale=adjusted_std)
+            prob_b_wins = 1 - stats.t.cdf(self.rope_interval, df_t, loc=mean_diff, scale=adjusted_std)
         
         return {
             "prob_A_better": float(prob_a_wins),

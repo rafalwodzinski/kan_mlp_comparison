@@ -1,123 +1,216 @@
-# KAN vs MLP: Benchmark dla medycznych danych tabelarycznych
+# Evaluating Kolmogorov-Arnold Networks (KAN) vs. Multi-Layer Perceptrons (MLP) on Medical Tabular Data
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python&logoColor=white)
-![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c?style=for-the-badge&logo=pytorch&logoColor=white)
-![scikit-learn](https://img.shields.io/badge/scikit--learn-1.3%2B-f7931e?style=for-the-badge&logo=scikit-learn&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![PyTorch 2.0+](https://img.shields.io/badge/pytorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
+[![Scikit-Learn](https://img.shields.io/badge/scikit--learn-1.3+-F7931E.svg)](https://scikit-learn.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
-## Cel projektu
+> **Rigorous MLOps & Statistical Benchmarking Engine** for investigating the empirical capabilities of Kolmogorov-Arnold Networks across noisy, small-sample, and class-imbalanced medical tabular datasets.
 
-Ten projekt przeprowadza benchmark, aby odpowiedzieć na palące pytanie we współczesnym uczeniu głębokim (Deep Learning): **Czy nowo wprowadzone Sieci Kołmogorowa-Arnolda (KAN) i ich warianty przewyższają klasyczne Wielowarstwowe Perceptrony (MLP) na medycznych zbiorach danych tabelarycznych?**
+---
 
-Medyczne dane tabelaryczne są niezwykle trudne do modelowania ze względu na ich heterogeniczność, niezbalansowanie klas oraz brakujące wartości. W tym projekcie wprowadzono rygorystyczne standardy MLOps, aby zagwarantować, że ewaluacja jest naukowo ważna. Kładziemy ogromny nacisk na zapobieganie wyciekowi danych (Data Leakage). Nasze strategie imputacji (KNN/Mediana) oraz skalowania są hermetycznie odizolowane – uczą się wyłącznie na foldach treningowych podczas walidacji krzyżowej (cross-validation), gwarantując tym samym, że nasze wyniki odzwierciedlają prawdziwą zdolność modeli do generalizacji, a nie błędy w metodologii.
+## 1. Overview & Research Objectives
 
-## Architektura i struktura projektu
+While deep learning architectures have achieved superhuman performance in computer vision and natural language processing, traditional tree-based ensembles and Multi-Layer Perceptrons (MLPs) remain the dominant paradigms for clinical tabular data. Medical tabular datasets present unique machine learning challenges:
+- **Severe Data Scarcity (*Small Data* Phenomenon)**: Small patient cohorts resulting in high risk of overfitting.
+- **High Noise & Missingness**: Imperfect clinical measurements and unrecorded diagnostic variables.
+- **Complex Non-Linear Topologies**: Intricate interactions between physiological biomarkers.
+- **Class Imbalance**: Rare pathological conditions compared to healthy baseline populations.
 
-Repozytorium zostało zorganizowane zgodnie z najlepszymi praktykami MLOps:
+**Kolmogorov-Arnold Networks (KANs)** propose a fundamental shift from the Universal Approximation Theorem (UAT) to the Kolmogorov-Arnold Representation Theorem (KAM). Instead of static nodal activation functions ($\sigma(\mathbf{W}\mathbf{x} + \mathbf{b})$) with linear synaptic weights, KANs replace linear weights with learnable univariate functions ($\phi_{q,p}(x_p)$) parameterized by B-splines, orthogonal polynomials, or wavelets along the edges of the network graph.
+
+This repository implements a **hermetically sealed, zero-data-leakage benchmarking pipeline** designed to empirically answer: *Do learnable univariate edge activations in KAN architectures outperform traditional MLP representations and tree-based baselines under rigorous clinical validation constraints?*
+
+---
+
+## 2. Key Methodological Innovations
+
+To guarantee publication-grade reproducibility and eliminate common experimental biases (such as data leakage and $p$-value hacking), the benchmarking framework enforces the following methodological standards:
+
+### Zero-Leakage Hermetic Data Preprocessing
+In many medical ML studies, global normalization or imputation before cross-validation introduces severe data leakage, artificially inflating test scores. Our pipeline guarantees isolation:
+- All transformations (`StandardScaler`, `SimpleImputer`, `KNNImputer`, and `OneHotEncoder`) are dynamically encapsulated inside each training fold.
+- Transformers are fitted (`fit_transform`) exclusively on the training split and applied blindly (`transform`) to validation validation splits.
+
+### 3×5 Repeated Stratified K-Fold Cross-Validation
+To account for variance in fold splitting on small patient cohorts, the entire evaluation suite runs a **3×5 Repeated Stratified K-Fold Cross-Validation** (15 independent training runs per model–dataset pair). This preserves the exact diagnostic class ratio across every validation fold.
+
+### Automated Hyperparameter Optimization (Optuna HPO)
+To ensure fair architectural comparisons without manual tuning bias, each CV fold dynamically executes a **15-trial Optuna hyperparameter search** using a leakage-free inner 80/20 validation split and `MedianPruner` early trial termination. Optimizable parameters include learning rate, weight decay, hidden dimensionality, and KAN-specific capacity hyperparameters (`grid_size`, `degree`, `num_wavelets`).
+
+### Early Stopping & Optimal Weight Restoration
+Every neural training loop is monitored by an `EarlyStopping` callback (`patience=10`, `min_delta=1e-4`) evaluated against validation loss. When training terminates, deep copies of the optimal network weights from the best-performing epoch are automatically restored and serialized.
+
+### Holistic Clinical & Computational Metrics
+Models are evaluated across a multi-dimensional spectrum of predictive accuracy and clinical deployment viability:
+- **Matthews Correlation Coefficient (MCC)**: Robust consensus metric for severe clinical class imbalance.
+- **Area Under the ROC Curve (AUROC)** & **F1-Score**: Threshold-independent classification discriminative power.
+- **Brier Score**: Probabilistic calibration error (essential for clinical decision support systems).
+- **Computational Latency & Complexity**: Per-sample inference time (ms), total training time (seconds), and total trainable parameter count.
+
+---
+
+## 3. Repository Architecture
 
 ```text
 kan_mlp_comparison/
-│
 ├── data/
-│   ├── raw/               # Surowe medyczne zbiory danych
-│   └── processed/         # Zbiory danych przetworzone i gotowe do benchmarku
-│
+│   ├── raw/                 # Original clinical datasets (.csv)
+│   └── processed/           # Standardized tabular datasets formatted for loading
+├── notebooks/
+│   ├── 01_eda.ipynb         # Exploratory Data Analysis & preprocessing verification
+│   └── 02_results_analysis.ipynb # Interactive statistical inspection of results
 ├── scripts/
-│   ├── automate_benchmark.py  # Główny potok (pipeline) uruchamiający testy dla wszystkich modeli i zbiorów
-│   └── generate_report.py     # Automatyczny skrypt generujący tabele analityczne i wykresy do publikacji
-│
+│   ├── run_full_pipeline.py  # MASTER: 1-click orchestration of the entire pipeline
+│   ├── automate_benchmark.py # PHASE 1: Master execution script for 3x5 CV benchmark
+│   ├── generate_report.py    # PHASE 2: Statistical aggregator, table & plot generator
+│   └── run_ablation_study.py # PHASE 3: Data scarcity degradation experiment runner
 ├── src/
 │   ├── data/
-│   │   └── loader.py      # Bezpieczny potok preprocessingu (StandardScaler -> KNNImputer) chroniący przed wyciekiem danych
+│   │   └── loader.py        # PyTorch Dataset wrappers and leakage-free Preprocessor pipelines
 │   ├── models/
-│   │   ├── base.py        # Bazowy interfejs dla modeli tabelarycznych
-│   │   ├── mlp.py         # Architektura StandardMLP
-│   │   └── kan_variants/  # 9 zaawansowanych architektur KAN (TabKAN, FastKAN, ChebyKAN, itd.)
+│   │   ├── base.py          # Abstract base class enforcing unified logging & parameter counting
+│   │   ├── mlp.py           # StandardMLP & TabResNet architectures with GELU and BatchNorm
+│   │   └── kan_variants/    # 9 specialized Kolmogorov-Arnold Network implementations
+│   │       ├── base_kan.py       # Core KAN base architecture
+│   │       ├── cheby_kan.py      # Chebyshev polynomial KAN
+│   │       ├── fast_kan.py       # Fast Radial Basis Function KAN
+│   │       ├── gram_kan.py       # Gram polynomial KAN
+│   │       ├── jacobi_kan.py     # Jacobi polynomial KAN
+│   │       ├── legendre_kan.py   # Legendre polynomial KAN
+│   │       ├── relu_kan.py       # ReLU-based spline approximation KAN
+│   │       ├── tab_kan.py        # Tabular-optimized KAN architecture
+│   │       ├── taylor_kan.py     # Taylor series expansion KAN
+│   │       └── wav_kan.py        # Wavelet-based KAN (WavKAN)
 │   ├── training/
-│   │   ├── trainer.py     # TabularTrainer zarządzający pętlą uczenia, funkcją straty i zapisem artefaktów
-│   │   └── cross_validation.py # Silnik Stratified 5-Fold CV zapewniający hermetyczny podział danych
+│   │   ├── cross_validation.py # Repeated Stratified K-Fold engine with hermetic preprocessors
+│   │   ├── early_stopping.py   # Validation loss monitor with deep-copy state restoration
+│   │   ├── hpo.py              # Lightweight Optuna tuning engine with inner validation splitting
+│   │   └── trainer.py          # Unified PyTorch & Scikit-Learn training/evaluator module
 │   └── evaluation/
-│       ├── metrics.py     # Kuloodporne wyliczanie metryk medycznych (MCC, AUROC, F1)
-│       ├── stats.py       # Statystyka częstościowa (Test Friedmana, Test Wilcoxona Post-Hoc)
-│       └── bayesian_stats.py # Bayesowski skorelowany test t-Studenta z analizą ROPE dla CV
-│
-└── results/
-    ├── artifacts/         # Zapisane wagi modeli, macierze pomyłek i historie uczenia (JSON) na fold
-    └── plots/             # Automatycznie wygenerowane wykresy skrzynkowe (Boxplots), Heatmapy oraz Krzywe Uczenia
+│       ├── metrics.py       # Clinical evaluation metrics (MCC, AUROC, Brier Score, Confusion Matrix)
+│       ├── stats.py         # Frequentist statistics (Wilcoxon signed-rank with Holm-Bonferroni)
+│       ├── bayesian_stats.py# Bayesian correlated t-test with Region of Practical Equivalence (ROPE)
+│       ├── plot_radar.py    # Multi-dimensional architecture trade-off Radar (Spider) charts
+│       ├── plot_bayesian.py # Bayesian posterior probability distribution visualizer
+│       └── plot_ablation.py # Data scarcity performance degradation curve plotter
+├── results/                 # Auto-generated outputs (CSVs, JSON logs, saved models, PNG plots)
+├── requirements.txt         # Core dependencies
+└── README.md                # Project documentation
 ```
 
-## Modele i zbiory danych
+---
 
-### Testowane architektury (10 Modeli)
-1. **StandardMLP** (Baza porównawcza)
-2. **TabKAN** (Dedykowany KAN zoptymalizowany pod cechy tabelaryczne i bramkowanie sygnału)
-3. **FastKAN**
-4. **ChebyKAN**
-5. **JacobiKAN**
-6. **LegendreKAN**
-7. **GramKAN**
-8. **TaylorKAN**
-9. **WavKAN**
-10. **ReLUKAN**
+## 4. Model Registry & Medical Datasets
 
-### Medyczne zbiory danych (7 Zbiorów)
-- Rak Piersi (Breast Cancer)
-- Choroba Parkinsona
-- Kardiotokografia (CTG)
-- Cukrzyca (Diabetes)
-- Przewlekła Choroba Nerek (Chronic Kidney Disease)
-- *(...oraz inne przetworzone zbiory znajdujące się w `data/processed/`)*
+### Model Architecture Suite (`MODELS` Registry)
+The benchmark compares **11 distinct model architectures** across neural and non-neural paradigms:
+1. **`StandardMLP`**: Classic Multi-Layer Perceptron baseline with Batch Normalization, Dropout, and GELU activations.
+2. **`RandomForest`**: Non-neural tree ensemble baseline (`scikit-learn` Random Forest Classifier).
+3. **`WavKAN`**: Wavelet-based Kolmogorov-Arnold Network utilizing Difference of Gaussians (DoG) or Mexican Hat wavelets.
+4. **`FastKAN`**: Radial Basis Function (RBF) approximation KAN designed for accelerated forward training.
+5. **`ChebyKAN`**: Orthogonal Chebyshev polynomial parametrization KAN.
+6. **`JacobiKAN`**: Jacobi orthogonal polynomial KAN.
+7. **`LegendreKAN`**: Legendre polynomial KAN.
+8. **`GramKAN`**: Gram polynomial KAN.
+9. **`TaylorKAN`**: Taylor series expansion KAN.
+10. **`ReLUKAN`**: Piecewise ReLU linear spline approximation KAN.
+11. **`TabKAN`**: Domain-tailored tabular KAN architecture with feature-wise gating.
 
-## Przygotowanie benchmarku
+### Clinical Benchmark Datasets
+The suite evaluates models across 7 diverse clinical tasks spanning binary and multiclass diagnosis, variable sample volumes, and differing feature distributions:
 
-Postępuj zgodnie z poniższymi instrukcjami, aby odtworzyć środowisko i uruchomić benchmark lokalnie.
+| Dataset Name | Filename | Target Column | Sample Size ($N$) | Features ($d$) | Clinical Domain |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Breast Cancer** | `breast_cancer_processed.csv` | `Diagnosis` | 569 | 30 | Oncology (Wisconsin FNA biopsy features) |
+| **Pima Diabetes** | `pima_diabetes_processed.csv` | `class` | 768 | 8 | Endocrinology (Metabolic diagnostic markers) |
+| **Heart Disease** | `heart_disease_processed.csv` | `num` | 303 | 13 | Cardiology (UCI Cleveland angiography records) |
+| **Chronic Kidney Disease**| `chronic_kidney_disease_processed.csv`| `class` | 400 | 24 | Nephrology (Biochemical blood & urine tests) |
+| **Parkinson's Disease** | `parkinsons_processed.csv` | `status` | 195 | 22 | Neurology (Biomedical voice acoustic measurements)|
+| **Cervical Cancer** | `cervical_cancer_processed.csv` | `Biopsy` | 858 | 32 | Gynecology (Demographic & clinical risk factors) |
+| **Cardiotocography** | `cardiotocography_processed.csv` | `NSP` | 2,126 | 21 | Obstetrics (Fetal heart rate & uterine contraction)|
 
-1. **Sklonuj repozytorium:**
-   ```bash
-   git clone https://github.com/your-username/kan_mlp_comparison.git
-   cd kan_mlp_comparison
-   ```
+---
 
-2. **Stwórz wirtualne środowisko:**
-   Używając `conda`:
-   ```bash
-   conda create -n kan_benchmark python=3.10
-   conda activate kan_benchmark
-   ```
-   Lub używając standardowego `venv`:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # W systemie Windows: venv\Scripts\activate
-   ```
+## 5. Step-by-Step Reproduction Guide
 
-3. **Zainstaluj zależności:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+Follow these sequential steps to reproduce the full scientific findings, statistical tests, and publication figures from scratch.
 
-## Uruchomienie benchmarku
+### Step 0: Environment Setup
+Ensure Python 3.10+ is installed. Clone the repository and install dependencies:
+```bash
+git clone https://github.com/your-username/kan_mlp_comparison.git
+cd kan_mlp_comparison
 
-Przepływ pracy jest podzielony na dwa zautomatyzowane skrypty. Upewnij się, że zbiory danych znajdują się w `data/processed/` przed startem.
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-### Krok 1: Uruchomienie potoku treningowego (Benchmark Pipeline)
-Aby rozpocząć walidację krzyżową (CV) dla wszystkich zbiorów i modeli, wpisz:
+# Install core dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### Option A: 1-Click Automated Reproduction (Recommended)
+To execute the entire experimental lifecycle sequentially (Main 3×5 CV Benchmark -> Dataset Scarcity Ablation -> Report & Publication Plot Generation) with automated time tracking and real-time logging, run the master orchestration script:
+```bash
+python scripts/run_full_pipeline.py
+```
+
+### Option B: Manual Step-by-Step Execution
+If you prefer to execute individual phases of the pipeline separately:
+
+#### Step 1: Execute Main 3×5 CV Benchmark
+Run the automated benchmark script. This executes 3×5 Repeated Stratified CV across all 7 datasets and 11 model architectures (incorporating per-fold Optuna HPO, Early Stopping, and artifact serialization):
 ```bash
 python scripts/automate_benchmark.py
 ```
-*Uwaga: Skrypt wykona Stratified 5-Fold CV. Automatycznie będzie on śledzić historię `Train Loss` oraz `Val Loss` i zapisywać wagi, historie epok oraz macierze pomyłek w odpowiednich folderach w `results/artifacts/`.*
+*Note: This generates granular validation records in `results/benchmark_master_YYYYMMDD-HHMM.csv` and serialized weights/confusion matrices inside `results/artifacts/`.*
 
-### Krok 2: Wygenerowanie raportu analitycznego
-Gdy benchmark zakończy pracę, wygeneruj tabele statystyczne i wykresy do publikacji:
+### Step 2: Generate Analytical Report, Statistics & Publication Figures
+Once the main benchmark finishes, execute the analytical report generator:
 ```bash
 python scripts/generate_report.py
 ```
-Ten skrypt wykona:
-- Agregację metryk (`results/summary_metrics.csv`).
-- Obliczenia testów statystycznych (`results/stats_wilcoxon_posthoc.csv`, `results/stats_bayesian_rope.csv`).
-- Generowanie Heatmap (Macierze Pomyłek), Krzywych Uczenia oraz Boxplotów dla Metryk, zapisując je w `results/plots/`.
+This automatically parses the latest benchmark master file and produces:
+- **`results/summary_metrics.csv`**: Aggregated `Mean ± Std` table across MCC, AUROC, F1, Brier Score, Inference Time, and Parameter counts.
+- **`results/stats_wilcoxon_posthoc.csv`**: Frequentist Wilcoxon signed-rank test results against StandardMLP with **Holm-Bonferroni correction**.
+- **`results/stats_bayesian_rope.csv`**: Correlated Bayesian $t$-test estimation evaluating posterior probabilities ($P(\text{KAN} > \text{MLP})$, $P(\text{MLP} > \text{KAN})$, and $P(\text{ROPE})$).
+- **`results/plots/`**: High-resolution PNG figures including metric boxplots, clinical confusion matrices, learning curves, multi-dimensional architecture radar charts, and Bayesian posterior distributions.
 
-## Metody statystyczne
+### Step 3: Run Data Scarcity Ablation Study (Degradation Analysis)
+To test architectural robustness under extreme clinical data scarcity (*Small Data* regime), execute the subsampling ablation study:
+```bash
+python scripts/run_ablation_study.py
+```
+This systematically trains all 11 architectures across decreasing training data fractions (`1.0`, `0.8`, `0.6`, `0.4`, `0.2`, `0.1`), preserving stratified class ratios.
+Once completed, re-run `python scripts/generate_report.py` to generate the data scarcity degradation curves (`results/plots/ablation_*_*.png`).
 
-Wykorzystujemy zaawansowane metodologie statystyczne, aby udowodnić wyższość modeli:
-- **Podejście częstościowe:** Używamy **Testu Friedmana** do sprawdzenia ogólnej istotności różnic na wielu zbiorach danych, po którym następuje **Test Wilcoxona ze znakiem (Post-Hoc)** wyposażony w poprawkę Holm-Bonferroni, eliminującą ryzyko fałszywych wyników pozytywnych przy testowaniu wielu hipotez.
-- **Podejście bayesowskie:** Wykorzystujemy **Bayesowski skorelowany test t-Studenta** (Benavoli et al., 2017) zaprojektowany specjalnie na potrzeby walidacji krzyżowej. Definiując Obszar Praktycznej Równoważności (ROPE), szacujemy dokładne prawdopodobieństwo, że dany model KAN jest znacząco lepszy od modelu bazowego MLP, unikając tym samym problemów klasycznego p-value.
+---
+
+## 6. Statistical Methodology Note
+
+Evaluating machine learning models across a limited number of clinical datasets ($n \le 7$) introduces fundamental statistical challenges when relying solely on frequentist hypothesis testing:
+- **Frequentist Power Limitations**: As demonstrated by Demšar (2006), non-parametric frequentist tests (such as the Wilcoxon signed-rank test) suffer from severe statistical powerlessness when the number of datasets is small ($n < 10$). Even when an architecture consistently outperforms a baseline across all 7 datasets, frequentist $p$-values may fail to cross standard alpha thresholds ($\alpha = 0.05$) due to discrete rank distribution limits.
+- **Bayesian ROPE Analysis**: To provide rigorous, publication-grade statistical inference without $p$-value hacking, our pipeline implements the **Correlated Bayesian Signed-Rank $t$-Test** (Corani & Benavoli, 2015; Benavoli et al., 2017). By defining a **Region of Practical Equivalence (ROPE)** (e.g., $\pm 0.01$ MCC or AUROC), the Bayesian framework computes exact posterior probabilities:
+  - $P(\text{Model A is superior})$
+  - $P(\text{Model B is superior})$
+  - $P(\text{Models are practically equivalent within clinical tolerance})$
+
+This dual reporting structure guarantees full transparency and adheres to the highest statistical standards of top-tier medical AI journals (e.g., *Nature Digital Medicine*, *Lancet Digital Health*, *IEEE Transactions on Medical Imaging*).
+
+---
+
+## 7. License & Citation
+
+This research code is released under the **MIT License**. If you utilize this benchmarking suite, data loaders, or KAN implementations in your academic research, please cite:
+
+```bibtex
+@article{kan_vs_mlp_medical_2026,
+  title={Evaluating Kolmogorov-Arnold Networks (KAN) vs. Multi-Layer Perceptrons (MLP) on Medical Tabular Data},
+  author={Core Benchmark Contributors},
+  journal={Medical AI Research Repository},
+  year={2026},
+  url={https://github.com/your-username/kan_mlp_comparison}
+}
+```

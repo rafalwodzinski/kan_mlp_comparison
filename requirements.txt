@@ -1,27 +1,23 @@
-# --- Rdzeń Deep Learningu ---
+# --- Deep Learning Core ---
 torch>=2.0.0
-torchvision
 
-# --- Przetwarzanie danych i metryki ---
+# --- Data Processing and Metrics ---
 numpy
 pandas
 scikit-learn
 tqdm
 
-# --- Śledzenie eksperymentów ---
-mlflow
+# --- Hyperparameter Optimization ---
+optuna
 
-# --- Statystyka i interpretowalność ---
+# --- Statistical Analysis ---
 scipy
-shap
 
-# --- Notatniki Jupyter i Wizualizacja ---
+# --- Jupyter Notebooks and Visualization ---
 jupyter
 notebook
 matplotlib
 seaborn
 
-# --- Dane ---
+# --- Medical Datasets Repository ---
 ucimlrepo
-missingno
-kagglehub

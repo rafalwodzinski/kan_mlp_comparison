@@ -25,7 +25,7 @@ class TabularTrainer:
     """
     def __init__(
         self, 
-        model: nn.Module, 
+        model: Any, 
         optimizer: torch.optim.Optimizer, 
         criterion: nn.Module, 
         device: torch.device,
@@ -35,7 +35,12 @@ class TabularTrainer:
         repeat: int = 1,
         fold: int = 1
     ):
-        self.model = model.to(device)
+        self.is_sklearn = isinstance(model, BaseEstimator)
+        if not self.is_sklearn:
+            self.model = model.to(device)
+        else:
+            self.model = model
+            
         self.optimizer = optimizer
         self.criterion = criterion
         self.device = device
@@ -45,12 +50,6 @@ class TabularTrainer:
         self.repeat = repeat
         self.fold = fold
         self.experiment_name = f"{dataset_name}_{model_name}_Repeat{repeat}_Fold{fold}"
-        
-        self.is_sklearn = isinstance(model, BaseEstimator)
-        if not self.is_sklearn:
-            self.model = model.to(device)
-        else:
-            self.model = model
             
         self.evaluator = MedicalMetricsEvaluator(is_binary=self.is_binary)
         self.last_confusion_matrix = None
@@ -97,7 +96,10 @@ class TabularTrainer:
                 X_batch_np = X_batch.numpy()
                 probs = self.model.predict_proba(X_batch_np)
                 if self.is_binary:
-                    probs = probs[:, 1]
+                    if probs.shape[1] == 2:
+                        probs = probs[:, 1]
+                    else:
+                        probs = probs.ravel()
                 all_preds.append(probs)
                 all_trues.append(y_batch.numpy())
             
@@ -108,7 +110,7 @@ class TabularTrainer:
             
             total_samples = len(y_true_all)
             self.inference_time_total_seconds = inference_end - inference_start
-            self.inference_time_ms = (self.inference_time_total_seconds / total_samples) * 1000
+            self.inference_time_ms = (self.inference_time_total_seconds / total_samples) * 1000 if total_samples > 0 else 0.0
             self.inference_time_per_sample_ms = self.inference_time_ms
             
             metrics = self.evaluator.calculate_metrics(y_true_all, y_prob_all)
@@ -151,11 +153,11 @@ class TabularTrainer:
         
         total_samples = len(y_true_all)
         self.inference_time_total_seconds = inference_end - inference_start
-        self.inference_time_ms = (self.inference_time_total_seconds / total_samples) * 1000
+        self.inference_time_ms = (self.inference_time_total_seconds / total_samples) * 1000 if total_samples > 0 else 0.0
         self.inference_time_per_sample_ms = self.inference_time_ms
         
         metrics = self.evaluator.calculate_metrics(y_true_all, y_prob_all)
-        metrics["loss"] = total_loss / len(dataloader)
+        metrics["loss"] = total_loss / len(dataloader) if len(dataloader) > 0 else 0.0
         metrics["inference_time_ms"] = self.inference_time_ms
         metrics["inference_time_per_sample_ms"] = self.inference_time_per_sample_ms
         metrics["inference_time_total_seconds"] = self.inference_time_total_seconds
@@ -250,10 +252,6 @@ class TabularTrainer:
         # Restore best weights if Early Stopping triggered
         if early_stopping.best_state is not None:
             self.model.load_state_dict(early_stopping.best_state)
-        
-        # Final artifacts directory structure
-        save_dir = f"results/artifacts/{self.dataset_name}/{self.model_name}"
-        os.makedirs(save_dir, exist_ok=True)
         
         # Plot and save learning curve
         plt.figure(figsize=(10, 6))

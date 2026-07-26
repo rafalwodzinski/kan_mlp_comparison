@@ -2,9 +2,9 @@ import os
 import pandas as pd
 from typing import List
 import torch
+import sys
 
 # Fix for imports if script run from root
-import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from scripts.automate_benchmark import ExperimentArgs, MODELS, _detect_device
@@ -15,13 +15,13 @@ def run_ablation_study():
     DATASETS_DIR = "data/processed/"
     
     if os.path.exists(DATASETS_DIR):
-        datasets = [f for f in os.listdir(DATASETS_DIR) if f.endswith('_processed.csv')]
+        datasets = sorted([f for f in os.listdir(DATASETS_DIR) if f.endswith('_processed.csv')])
     else:
         print(f"Warning: Directory {DATASETS_DIR} does not exist.")
         return
         
-    # User-requested models for ablation
-    ablation_models = ["StandardMLP", "WavKAN", "RandomForest", "FastKAN", "ChebyKAN"]
+    # All 11 models from our registry for exhaustive ablation study
+    ablation_models = list(MODELS.keys())
     fractions = [1.0, 0.8, 0.6, 0.4, 0.2, 0.1]
     
     os.makedirs("results", exist_ok=True)
@@ -44,12 +44,12 @@ def run_ablation_study():
                 print(f"ABLATION STUDY: {dataset_file} | {model_name} | Fraction: {fraction}")
                 print(f"===========================================================")
                 
-                # Base args configuration
+                # Base args configuration matching automate_benchmark.py standards
                 args = ExperimentArgs(
                     data_path=data_path,
                     model_name=model_name,
-                    batch_size=64,
-                    epochs=100, # Handled by Early Stopping
+                    batch_size=32,
+                    epochs=50, # Early Stopping will prevent overfitting
                     lr=0.001,
                     device=_detect_device()
                 )

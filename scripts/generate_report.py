@@ -22,6 +22,7 @@ from src.evaluation.stats import FrequentistEvaluator
 from src.evaluation.bayesian_stats import BayesianEvaluator
 from src.evaluation.plot_radar import plot_radar_chart
 from src.evaluation.plot_bayesian import plot_bayesian_rope_evidence
+from src.evaluation.plot_ablation import plot_ablation_curves
 
 def find_latest_results() -> str:
     """
@@ -49,15 +50,19 @@ def generate_summary_table(df: pd.DataFrame):
     Args:
         df (pd.DataFrame): Full results DataFrame loaded from benchmark_master.
     """
-    # Defined catalog of target medical metrics
-    possible_metrics = ['mcc', 'auroc', 'f1_score', 'accuracy', 'loss']
+    # Defined catalog of target medical and computational metrics
+    possible_metrics = [
+        'mcc', 'auroc', 'f1_score', 'balanced_accuracy', 'brier_score', 
+        'inference_time_per_sample_ms', 'total_train_time_seconds', 
+        'trainable_parameters', 'loss'
+    ]
     metrics = [m for m in possible_metrics if m in df.columns]
     
     if not metrics:
         print("[Warning] No known metrics found in file for aggregation.")
         return
         
-    # Hierarchical grouping by medical phenomenon (dataset) and applied technology (model)
+    # Hierarchical grouping by dataset and model architecture
     grouped = df.groupby(['dataset', 'model'])[metrics].agg(['mean', 'std'])
     
     # Processing and concatenating for elegant text format for publication: "Mean ± Std"
@@ -76,11 +81,11 @@ def generate_summary_table(df: pd.DataFrame):
 def generate_statistical_reports(df: pd.DataFrame):
     """
     Manages rigorous statistical assessments between classic MLP
-    and the leading variant of the KAN network family. Runs the pipeline of frequentist
-    inference (Post-Hoc Wilcoxon) and Bayesian estimation (ROPE).
+    and the leading variant of the KAN network family across multiple metrics.
+    Runs the pipeline of frequentist inference (Post-Hoc Wilcoxon) and Bayesian estimation (ROPE).
     
     Args:
-        df (pd.DataFrame): Full DataFrame after 5-Fold tests.
+        df (pd.DataFrame): Full DataFrame after Repeated CV tests.
     """
     frequentist = FrequentistEvaluator()
     bayesian = BayesianEvaluator()
@@ -89,10 +94,12 @@ def generate_statistical_reports(df: pd.DataFrame):
     wilcoxon_results = []
     bayesian_results = []
     
+    metrics_to_test = ['mcc', 'auroc', 'f1_score', 'brier_score', 'inference_time_per_sample_ms']
+    
     for dataset in datasets:
         df_ds = df[df['dataset'] == dataset]
         
-        # Extract model keys and search for undisputed performance king of the KAN family
+        # Extract model keys and search for undisputed performance king of the KAN family based on MCC
         kan_models = [m for m in df_ds['model'].unique() if "KAN" in m]
         if not kan_models:
             continue
@@ -104,35 +111,39 @@ def generate_statistical_reports(df: pd.DataFrame):
         if baseline not in df_ds['model'].unique():
             continue
             
-        # 1. Wilcoxon Post-Hoc Test (Checking phenomenon of asymptotic statistical powerlessness at small n)
-        try:
-            res_wilcoxon = frequentist.run_wilcoxon_post_hoc(
-                df_ds, 
-                baseline_model=baseline, 
-                competitor_models=[best_kan], 
-                metric='mcc'
-            )
-            # Namespace annotation to preserve logical consistency in a large table
-            res_wilcoxon['dataset'] = dataset
-            wilcoxon_results.append(res_wilcoxon)
-        except Exception as e:
-            print(f"[Warning] Wilcoxon test failed for {dataset}: {e}")
-        
-        # 2. Correlated Bayesian Test 
-        # Solves the problem of over-reliance on p-values (p-value hacking)
-        try:
-            res_bayes = bayesian.bayesian_correlated_ttest(
-                df_ds, 
-                model_a=baseline, 
-                model_b=best_kan, 
-                metric='mcc'
-            )
-            res_bayes['dataset'] = dataset
-            res_bayes['Model A (Baseline)'] = baseline
-            res_bayes['Model B (Best KAN)'] = best_kan
-            bayesian_results.append(res_bayes)
-        except Exception as e:
-            print(f"[Warning] Bayesian test failed for {dataset}: {e}")
+        for metric in metrics_to_test:
+            if metric not in df_ds.columns:
+                continue
+                
+            # 1. Wilcoxon Post-Hoc Test
+            try:
+                res_wilcoxon = frequentist.run_wilcoxon_post_hoc(
+                    df_ds, 
+                    baseline_model=baseline, 
+                    competitor_models=[best_kan], 
+                    metric=metric
+                )
+                res_wilcoxon['dataset'] = dataset
+                res_wilcoxon['metric'] = metric.upper()
+                wilcoxon_results.append(res_wilcoxon)
+            except Exception as e:
+                print(f"[Warning] Wilcoxon test failed for {dataset} ({metric}): {e}")
+            
+            # 2. Correlated Bayesian Test
+            try:
+                res_bayes = bayesian.bayesian_correlated_ttest(
+                    df_ds, 
+                    model_a=baseline, 
+                    model_b=best_kan, 
+                    metric=metric
+                )
+                res_bayes['dataset'] = dataset
+                res_bayes['metric'] = metric.upper()
+                res_bayes['Model A (Baseline)'] = baseline
+                res_bayes['Model B (Best KAN)'] = best_kan
+                bayesian_results.append(res_bayes)
+            except Exception as e:
+                print(f"[Warning] Bayesian test failed for {dataset} ({metric}): {e}")
         
     # Final dump of results to CSV files
     if wilcoxon_results:
@@ -148,7 +159,7 @@ def generate_statistical_reports(df: pd.DataFrame):
 def generate_plots(df: pd.DataFrame):
     """
     Engineering of plots with quality and aesthetics adapted to publication requirements.
-    Maps Boxplot type charts for main determinants of predictive ability.
+    Maps Boxplot type charts for main determinants of predictive ability and computational efficiency.
     
     Args:
         df (pd.DataFrame): Main aggregate of research data.
@@ -156,7 +167,7 @@ def generate_plots(df: pd.DataFrame):
     os.makedirs("results/plots", exist_ok=True)
     sns.set_theme(style="whitegrid") # Clean publication background (Nature/Science standard)
     
-    metrics_to_plot = ['mcc', 'auroc']
+    metrics_to_plot = ['mcc', 'auroc', 'f1_score', 'brier_score', 'inference_time_per_sample_ms', 'total_train_time_seconds']
     
     for metric in metrics_to_plot:
         if metric not in df.columns:
@@ -174,9 +185,9 @@ def generate_plots(df: pd.DataFrame):
         )
         
         # Publication descriptors
-        plt.title(f"Distribution of Metric {metric.upper()} in Cross Validation (5-Fold CV)", fontsize=16, fontweight='bold', pad=15)
+        plt.title(f"Distribution of Metric {metric.upper()} in Cross Validation", fontsize=16, fontweight='bold', pad=15)
         plt.xlabel("Medical Dataset", fontsize=14, labelpad=10)
-        plt.ylabel(f"Value {metric.upper()}", fontsize=14, labelpad=10)
+        plt.ylabel(f"Value ({metric.upper()})", fontsize=14, labelpad=10)
         
         # Adaptation of edges to readability of long medical diagnosis names
         plt.xticks(rotation=45, ha='right', fontsize=12)
@@ -224,7 +235,7 @@ def generate_confusion_matrices(df: pd.DataFrame):
                 # Painting using standard blue gamma
                 plt.figure(figsize=(8, 6))
                 sns.heatmap(total_cm, annot=True, fmt='d', cmap='Blues')
-                plt.title(f"Sum of Confusion Matrices (5-Fold CV)\nDataset: {dataset} | Model: {model}", fontsize=14)
+                plt.title(f"Sum of Confusion Matrices\nDataset: {dataset} | Model: {model}", fontsize=14)
                 plt.xlabel("Predicted Class (Model)", fontsize=12)
                 plt.ylabel("True Class (Ground Truth)", fontsize=12)
                 plt.tight_layout()
@@ -343,6 +354,15 @@ def main():
         
         print("\n--> 5. Generating learning curves (Learning Curves)...")
         generate_learning_curves(df)
+        
+        print("\n--> 6. Generating dataset size ablation degradation curves...")
+        try:
+            if os.path.exists("results/ablation_results.csv"):
+                plot_ablation_curves(results_path="results/ablation_results.csv", output_dir="results/plots")
+            else:
+                print("[Info] No results/ablation_results.csv found. Skipping ablation plots.")
+        except Exception as e:
+            print(f"[Warning] Ablation curve generation failed: {e}")
         
         print("\n" + "="*60)
         print("[SUCCESS] Full analytical pipeline finished without errors.")

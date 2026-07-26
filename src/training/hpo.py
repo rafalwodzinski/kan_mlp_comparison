@@ -93,7 +93,8 @@ class OptunaTuner:
             
             train_dataset = MedicalTabularDataset(X_inner_train, y_inner_train)
             val_dataset = MedicalTabularDataset(X_inner_val, y_inner_val)
-            train_loader = DataLoader(train_dataset, batch_size=self.args.batch_size, shuffle=True)
+            drop_last = (len(train_dataset) > self.args.batch_size and len(train_dataset) % self.args.batch_size == 1)
+            train_loader = DataLoader(train_dataset, batch_size=self.args.batch_size, shuffle=True, drop_last=drop_last)
             val_loader = DataLoader(val_dataset, batch_size=self.args.batch_size, shuffle=False)
             
             inner_epochs = 15

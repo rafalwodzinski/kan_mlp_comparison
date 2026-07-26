@@ -3,16 +3,16 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def plot_ablation_curves(results_path: str = "results/ablation_results.csv", output_dir: str = "results"):
+def plot_ablation_curves(results_path: str = "results/ablation_results.csv", output_dir: str = "results/plots"):
     if not os.path.exists(results_path):
-        print(f"Error: {results_path} not found.")
+        print(f"[Ablation Plot] Error: {results_path} not found.")
         return
         
     df = pd.read_csv(results_path)
     
     # Ensure train_fraction is present
     if 'train_fraction' not in df.columns:
-        print("Error: 'train_fraction' column missing from results.")
+        print("[Ablation Plot] Error: 'train_fraction' column missing from results.")
         return
         
     datasets = df['dataset'].unique()
@@ -23,14 +23,14 @@ def plot_ablation_curves(results_path: str = "results/ablation_results.csv", out
     for dataset in datasets:
         ds_df = df[df['dataset'] == dataset]
         
-        # Plot for AUROC and MCC
-        for metric in ['auroc', 'mcc']:
+        # Plot for AUROC, MCC, F1 Score, and Brier Score
+        for metric in ['auroc', 'mcc', 'f1_score', 'brier_score']:
             if metric not in ds_df.columns:
                 continue
                 
             plt.figure(figsize=(10, 6))
             
-            # Use lineplot which automatically handles the repeated CV folds (calculates mean and shaded 95% CI standard deviation)
+            # Use lineplot which automatically handles repeated CV folds (mean and standard deviation shading)
             sns.lineplot(
                 data=ds_df, 
                 x='train_fraction', 
@@ -55,7 +55,7 @@ def plot_ablation_curves(results_path: str = "results/ablation_results.csv", out
             plt.savefig(plot_path)
             plt.close()
             
-            print(f"Saved ablation plot: {plot_path}")
+            print(f"[Ablation Plot] Saved plot: {plot_path}")
 
 if __name__ == "__main__":
     plot_ablation_curves()

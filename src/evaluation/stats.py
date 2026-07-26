@@ -71,12 +71,18 @@ class FrequentistEvaluator:
             else:
                 stat, p_val = wilcoxon(baseline_scores, comp_scores, zero_method='zsplit')
                 
+            is_higher_better = metric.lower() not in ['brier_score', 'loss', 'inference_time_ms', 'inference_time_per_sample_ms', 'total_train_time_seconds', 'trainable_parameters']
+            if is_higher_better:
+                winner = competitor if np.median(comp_scores) > np.median(baseline_scores) else baseline_model
+            else:
+                winner = competitor if np.median(comp_scores) < np.median(baseline_scores) else baseline_model
+
             results.append({
                 "Model A (Baseline)": baseline_model,
                 "Model B": competitor,
                 "Statistic": stat,
                 "Unadjusted p-value": p_val,
-                "Winner": competitor if np.median(comp_scores) > np.median(baseline_scores) else baseline_model
+                "Winner": winner
             })
             
         res_df = pd.DataFrame(results)
