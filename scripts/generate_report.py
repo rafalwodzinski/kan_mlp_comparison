@@ -83,58 +83,84 @@ def generate_statistical_reports(df: pd.DataFrame):
     Manages rigorous statistical assessments between classic MLP
     and the leading variant of the KAN network family across multiple metrics.
     Runs the pipeline of frequentist inference (Post-Hoc Wilcoxon) and Bayesian estimation (ROPE).
-    
+
+    Wilcoxon design (Demsar, 2006):
+        Per metric, fold-level scores are first averaged within each dataset, yielding one
+        scalar per (model, dataset) pair.  The Wilcoxon signed-rank test operates on the
+        resulting n=7 dataset-level paired differences -- NOT on individual fold scores.
+        The best-KAN opponent is the variant with the highest grand-mean MCC across ALL
+        datasets (primary metric, Section III-D).
+
+    Bayesian ROPE design (Benavoli et al., 2017):
+        Operates per-dataset on all 15 fold-level paired differences.
+        Best-KAN per dataset selected by highest mean MCC within that dataset.
+
     Args:
         df (pd.DataFrame): Full DataFrame after Repeated CV tests.
     """
     frequentist = FrequentistEvaluator()
     bayesian = BayesianEvaluator()
-    
+
     datasets = df['dataset'].unique()
     wilcoxon_results = []
     bayesian_results = []
-    
+
     metrics_to_test = ['mcc', 'auroc', 'f1_score', 'brier_score', 'inference_time_per_sample_ms']
-    
-    for dataset in datasets:
-        df_ds = df[df['dataset'] == dataset]
-        
-        # Extract model keys and search for undisputed performance king of the KAN family based on MCC
-        kan_models = [m for m in df_ds['model'].unique() if "KAN" in m]
-        if not kan_models:
-            continue
-            
-        mean_mcc = df_ds.groupby('model')['mcc'].mean()
-        best_kan = mean_mcc[kan_models].idxmax()
-        baseline = "StandardMLP"
-        
-        if baseline not in df_ds['model'].unique():
-            continue
-            
+    baseline = "StandardMLP"
+
+    # ----------------------------------------------------------------
+    # FREQUENTIST: Wilcoxon pooled across ALL datasets (n=7 pairs)
+    # Best-KAN = single variant with highest grand-mean MCC (all data).
+    # ----------------------------------------------------------------
+    kan_models_global = [m for m in df['model'].unique() if "KAN" in m]
+    if kan_models_global and baseline in df['model'].unique():
+        grand_mean_mcc = df[df['model'].isin(kan_models_global)].groupby('model')['mcc'].mean()
+        best_kan_global = grand_mean_mcc.idxmax()
+        print(f"[Info] Wilcoxon pooled best-KAN (grand-mean MCC across all datasets): {best_kan_global}")
+
         for metric in metrics_to_test:
-            if metric not in df_ds.columns:
+            if metric not in df.columns:
                 continue
-                
-            # 1. Wilcoxon Post-Hoc Test
             try:
+                # Pass the FULL DataFrame so the internal aggregation yields n=7 dataset rows
                 res_wilcoxon = frequentist.run_wilcoxon_post_hoc(
-                    df_ds, 
-                    baseline_model=baseline, 
-                    competitor_models=[best_kan], 
+                    df,
+                    baseline_model=baseline,
+                    competitor_models=[best_kan_global],
                     metric=metric
                 )
-                res_wilcoxon['dataset'] = dataset
                 res_wilcoxon['metric'] = metric.upper()
                 wilcoxon_results.append(res_wilcoxon)
             except Exception as e:
-                print(f"[Warning] Wilcoxon test failed for {dataset} ({metric}): {e}")
-            
-            # 2. Correlated Bayesian Test
+                print(f"[Warning] Wilcoxon test failed for metric={metric}: {e}")
+
+    # ----------------------------------------------------------------
+    # BAYESIAN ROPE: per-dataset, 15 fold-level paired differences.
+    # Best-KAN per dataset by highest mean MCC within that dataset.
+    # ----------------------------------------------------------------
+    for dataset in datasets:
+        df_ds = df[df['dataset'] == dataset]
+
+        kan_models = [m for m in df_ds['model'].unique() if "KAN" in m]
+        if not kan_models:
+            continue
+
+        mean_mcc_ds = df_ds.groupby('model')['mcc'].mean()
+        best_kan = mean_mcc_ds[kan_models].idxmax()
+
+        if baseline not in df_ds['model'].unique():
+            continue
+
+        for metric in metrics_to_test:
+            if metric not in df_ds.columns:
+                continue
+
+            # Correlated Bayesian t-Test (ROPE)
             try:
                 res_bayes = bayesian.bayesian_correlated_ttest(
-                    df_ds, 
-                    model_a=baseline, 
-                    model_b=best_kan, 
+                    df_ds,
+                    model_a=baseline,
+                    model_b=best_kan,
                     metric=metric
                 )
                 res_bayes['dataset'] = dataset
@@ -144,13 +170,13 @@ def generate_statistical_reports(df: pd.DataFrame):
                 bayesian_results.append(res_bayes)
             except Exception as e:
                 print(f"[Warning] Bayesian test failed for {dataset} ({metric}): {e}")
-        
+
     # Final dump of results to CSV files
     if wilcoxon_results:
         final_wilcoxon = pd.concat(wilcoxon_results, ignore_index=True)
         final_wilcoxon.to_csv("results/stats_wilcoxon_posthoc.csv", index=False)
-        print("[Info] Saved frequentist tests (Wilcoxon) to: results/stats_wilcoxon_posthoc.csv")
-        
+        print("[Info] Saved frequentist tests (Wilcoxon, pooled n=7) to: results/stats_wilcoxon_posthoc.csv")
+
     if bayesian_results:
         final_bayesian = pd.DataFrame(bayesian_results)
         final_bayesian.to_csv("results/stats_bayesian_rope.csv", index=False)

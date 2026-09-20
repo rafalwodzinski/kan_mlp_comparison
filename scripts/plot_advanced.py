@@ -68,8 +68,8 @@ def plot_pareto_frontier(df: pd.DataFrame, output_dir: str):
         palette={"Baseline": "#1f77b4", "KAN Variant": "#d62728"}
     )
 
-    # Plot the pareto line
-    plt.plot(pareto_costs, pareto_utilities, color='black', linestyle='--', linewidth=2, label="Pareto Frontier", zorder=0)
+    # Plot the pareto line with markers and higher zorder so it's visible even for a single point
+    plt.plot(pareto_costs, pareto_utilities, color='black', linestyle='--', linewidth=2, marker='X', markersize=15, label="Pareto Frontier", zorder=10)
 
     # Annotate points
     for i, row in agg_df.iterrows():
