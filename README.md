@@ -41,7 +41,7 @@ Macro-averaged AUROC across all 7 datasets shows that no KAN variant outperforms
 
 | Model | Mean AUROC ↑ | Mean Brier Score ↓ |
 |---|---|---|
-| **StandardMLP** | **0.9517** | 0.0593 |
+| StandardMLP | 0.9517 | 0.0593 |
 | TaylorKAN | 0.9473 | 0.0611 |
 | TabKAN | 0.9470 | 0.0580 |
 | WavKAN | 0.9467 | 0.0588 |
@@ -166,7 +166,7 @@ Each fold is evaluated on:
 **1. Bayesian Correlated *t*-Test with ROPE**
 - Implementation: `src/evaluation/bayesian_stats.py`
 - Correlation constant: ρ = 1/*k* = 0.2 (Nadeau & Bengio, 2003)
-- Region of Practical Equivalence: **ROPE = ±0.01**
+- Region of Practical Equivalence: ROPE = ±0.01
 - Outputs: posterior probabilities P(A > B), P(B > A), P(ROPE) per dataset-metric pair
 - Results: `results/stats_bayesian_rope.csv`
 
