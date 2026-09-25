@@ -184,7 +184,7 @@ Each fold is evaluated on:
 
 ```bash
 # Clone the repository
-git clone https://github.com/<your-username>/kan_mlp_comparison.git
+git clone https://github.com/rafalwodzinski/kan_mlp_comparison.git
 cd kan_mlp_comparison
 
 # Create and activate conda environment
