@@ -10,6 +10,7 @@ import os
 import sys
 import glob
 import json
+import shutil
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -23,6 +24,9 @@ from src.evaluation.bayesian_stats import BayesianEvaluator
 from src.evaluation.plot_radar import plot_radar_chart
 from src.evaluation.plot_bayesian import plot_bayesian_rope_evidence
 from src.evaluation.plot_ablation import plot_ablation_curves
+from src.evaluation.plot_style import apply_publication_style, save_pdf, global_ylim
+from scripts.plot_advanced import plot_pareto_frontier, plot_cd_diagram, plot_rank_heatmap
+from scripts.plot_precision_recall import generate_precision_recall_curves
 
 def find_latest_results() -> str:
     """
@@ -52,7 +56,7 @@ def generate_summary_table(df: pd.DataFrame):
     """
     # Defined catalog of target medical and computational metrics
     possible_metrics = [
-        'mcc', 'auroc', 'f1_score', 'balanced_accuracy', 'brier_score', 
+        'mcc', 'auroc', 'auprc', 'f1_score', 'balanced_accuracy', 'brier_score', 
         'inference_time_per_sample_ms', 'total_train_time_seconds', 
         'trainable_parameters', 'loss'
     ]
@@ -105,7 +109,7 @@ def generate_statistical_reports(df: pd.DataFrame):
     wilcoxon_results = []
     bayesian_results = []
 
-    metrics_to_test = ['mcc', 'auroc', 'f1_score', 'brier_score', 'inference_time_per_sample_ms']
+    metrics_to_test = ['mcc', 'auroc', 'auprc', 'f1_score', 'brier_score', 'inference_time_per_sample_ms']
     baseline = "StandardMLP"
 
     # ----------------------------------------------------------------
@@ -191,43 +195,44 @@ def generate_plots(df: pd.DataFrame):
         df (pd.DataFrame): Main aggregate of research data.
     """
     os.makedirs("results/plots", exist_ok=True)
-    sns.set_theme(style="whitegrid") # Clean publication background (Nature/Science standard)
+    apply_publication_style("whitegrid") # Clean publication background + global large fonts
     
-    metrics_to_plot = ['mcc', 'auroc', 'f1_score', 'brier_score', 'inference_time_per_sample_ms', 'total_train_time_seconds']
+    metrics_to_plot = ['mcc', 'auroc', 'auprc', 'f1_score', 'brier_score', 'inference_time_per_sample_ms', 'total_train_time_seconds']
     
     for metric in metrics_to_plot:
         if metric not in df.columns:
             continue
             
-        plt.figure(figsize=(14, 8))
+        fig, ax = plt.subplots(figsize=(14, 8))
         
         # Plot considering accessibility palette (colorblind)
-        ax = sns.boxplot(
+        sns.boxplot(
             x="dataset", 
             y=metric, 
             hue="model", 
             data=df, 
-            palette="colorblind"
+            palette="colorblind",
+            ax=ax
         )
         
         # Publication descriptors
-        plt.title(f"Distribution of Metric {metric.upper()} in Cross Validation", fontsize=16, fontweight='bold', pad=15)
-        plt.xlabel("Medical Dataset", fontsize=14, labelpad=10)
-        plt.ylabel(f"Value ({metric.upper()})", fontsize=14, labelpad=10)
+        ax.set_title(f"Distribution of Metric {metric.upper()} in Cross Validation", fontweight='bold', pad=15)
+        ax.set_xlabel("Medical Dataset", labelpad=10)
+        ax.set_ylabel(f"Value ({metric.upper()})", labelpad=10)
         
         # Adaptation of edges to readability of long medical diagnosis names
-        plt.xticks(rotation=45, ha='right', fontsize=12)
-        plt.yticks(fontsize=12)
+        plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
         
         # Extracted legend outside of quantile columns overlap zone
-        plt.legend(title="Architecture Model", title_fontsize='13', fontsize='11', bbox_to_anchor=(1.02, 1), loc='upper left')
+        ax.legend(title="Architecture Model", bbox_to_anchor=(1.02, 1), loc='upper left')
         
-        plt.tight_layout()
+        fig.tight_layout()
         
-        out_path = f"results/plots/boxplot_{metric}.png"
-        plt.savefig(out_path, dpi=300, bbox_inches='tight')
-        plt.close()
+        out_path = save_pdf(f"results/plots/boxplot_{metric}.pdf", fig)
+        plt.close(fig)
         print(f"[Info] Saved plot: {out_path}")
+        if os.path.exists("manuscript/figures"):
+            shutil.copy2(out_path, f"manuscript/figures/boxplot_{metric}.pdf")
 
 def generate_confusion_matrices(df: pd.DataFrame):
     """
@@ -259,17 +264,19 @@ def generate_confusion_matrices(df: pd.DataFrame):
                     
             if total_cm is not None:
                 # Painting using standard blue gamma
-                plt.figure(figsize=(8, 6))
-                sns.heatmap(total_cm, annot=True, fmt='d', cmap='Blues')
-                plt.title(f"Sum of Confusion Matrices\nDataset: {dataset} | Model: {model}", fontsize=14)
-                plt.xlabel("Predicted Class (Model)", fontsize=12)
-                plt.ylabel("True Class (Ground Truth)", fontsize=12)
-                plt.tight_layout()
+                apply_publication_style("white")
+                fig, ax = plt.subplots(figsize=(8, 6))
+                sns.heatmap(total_cm, annot=True, fmt='d', cmap='Blues', ax=ax, annot_kws={"size": 15})
+                ax.set_title(f"Sum of Confusion Matrices\nDataset: {dataset} | Model: {model}", fontsize=16, fontweight='bold', pad=12)
+                ax.set_xlabel("Predicted Class (Model)", fontsize=14, labelpad=8)
+                ax.set_ylabel("True Class (Ground Truth)", fontsize=14, labelpad=8)
+                fig.tight_layout()
                 
-                out_path = f"results/plots/cm_{dataset}_{model}.png"
-                plt.savefig(out_path, dpi=300)
-                plt.close()
+                out_path = save_pdf(f"results/plots/cm_{dataset}_{model}.pdf", fig)
+                plt.close(fig)
                 print(f"[Info] Saved confusion matrix: {out_path}")
+                if os.path.exists("manuscript/figures"):
+                    shutil.copy2(out_path, f"manuscript/figures/cm_{dataset}_{model}.pdf")
 
 def generate_learning_curves(df: pd.DataFrame):
     """
@@ -278,9 +285,12 @@ def generate_learning_curves(df: pd.DataFrame):
     calculates mean and deviation aggregates, generating final averaged curve.
     """
     os.makedirs("results/plots", exist_ok=True)
+    apply_publication_style("whitegrid")
     datasets = df['dataset'].unique()
     models = df['model'].unique()
     
+    # PASS 1: aggregate every (dataset, model) curve so the Y scale can be unified globally
+    curves = []
     for dataset in datasets:
         for model in models:
             save_dir = f"results/artifacts/{dataset}/{model}"
@@ -313,33 +323,47 @@ def generate_learning_curves(df: pd.DataFrame):
             val_loss_arr = np.array([v[:min_len] for v in all_val_loss])
             
             # Vectorized statistics on folds axis (axis=0)
-            train_mean = np.mean(train_loss_arr, axis=0)
-            train_std = np.std(train_loss_arr, axis=0)
-            val_mean = np.mean(val_loss_arr, axis=0)
-            val_std = np.std(val_loss_arr, axis=0)
-            
-            epochs = np.arange(1, min_len + 1)
-            
-            plt.figure(figsize=(10, 6))
-            
-            # Plot and painting uncertainty intervals
-            plt.plot(epochs, train_mean, label="Training (Loss)", color="blue")
-            plt.fill_between(epochs, train_mean - train_std, train_mean + train_std, color="blue", alpha=0.2)
-            
-            plt.plot(epochs, val_mean, label="Validation (Loss)", color="orange")
-            plt.fill_between(epochs, val_mean - val_std, val_mean + val_std, color="orange", alpha=0.2)
-            
-            plt.title(f"Learning Curve with standard deviation\nDataset: {dataset} | Model: {model}", fontsize=14)
-            plt.xlabel("Epoch", fontsize=12)
-            plt.ylabel("Loss Function Value (Loss)", fontsize=12)
-            plt.legend()
-            plt.grid(True, linestyle='--', alpha=0.7)
-            plt.tight_layout()
-            
-            out_path = f"results/plots/learning_curves_{dataset}_{model}.png"
-            plt.savefig(out_path, dpi=300)
-            plt.close()
-            print(f"[Info] Saved learning curve: {out_path}")
+            curves.append({
+                'dataset': dataset, 'model': model, 'epochs': np.arange(1, min_len + 1),
+                'train_mean': np.mean(train_loss_arr, axis=0), 'train_std': np.std(train_loss_arr, axis=0),
+                'val_mean': np.mean(val_loss_arr, axis=0), 'val_std': np.std(val_loss_arr, axis=0),
+            })
+    
+    if not curves:
+        return
+    
+    # Unified Y scale: global min/max of the loss over the whole experiment (mean +/- std band)
+    y_min, y_max = global_ylim(
+        *[c['train_mean'] - c['train_std'] for c in curves],
+        *[c['train_mean'] + c['train_std'] for c in curves],
+        *[c['val_mean'] - c['val_std'] for c in curves],
+        *[c['val_mean'] + c['val_std'] for c in curves],
+    )
+    
+    # PASS 2: one standalone vector PDF per (dataset, model)
+    for c in curves:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # Plot and painting uncertainty intervals
+        ax.plot(c['epochs'], c['train_mean'], label="Training (Loss)", color="blue")
+        ax.fill_between(c['epochs'], c['train_mean'] - c['train_std'], c['train_mean'] + c['train_std'], color="blue", alpha=0.2)
+        
+        ax.plot(c['epochs'], c['val_mean'], label="Validation (Loss)", color="orange")
+        ax.fill_between(c['epochs'], c['val_mean'] - c['val_std'], c['val_mean'] + c['val_std'], color="orange", alpha=0.2)
+        
+        ax.set_title(f"Learning Curve with standard deviation\nDataset: {c['dataset']} | Model: {c['model']}")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Loss Function Value (Loss)")
+        ax.set_ylim(y_min, y_max)
+        ax.legend()
+        ax.grid(True, linestyle='--', alpha=0.7)
+        fig.tight_layout()
+        
+        out_path = save_pdf(f"results/plots/learning_curves_{c['dataset']}_{c['model']}.pdf", fig)
+        plt.close(fig)
+        print(f"[Info] Saved learning curve: {out_path}")
+        if os.path.exists("manuscript/figures"):
+            shutil.copy2(out_path, f"manuscript/figures/learning_curves_{c['dataset']}_{c['model']}.pdf")
 
 def main():
     """Start node - initializes all subsystems responsible for spitting out research analysis."""
@@ -361,7 +385,7 @@ def main():
         
         print("\n--> 3b. Generating multi-dimensional trade-off radar charts...")
         try:
-            plot_radar_chart(df, output_path="results/plots/radar_chart_tradeoffs.png")
+            plot_radar_chart(df, output_path="results/plots/radar_chart_tradeoffs.pdf")
         except Exception as e:
             print(f"[Warning] Radar chart generation failed: {e}")
             
@@ -369,9 +393,11 @@ def main():
         try:
             bayes_file = "results/stats_bayesian_rope.csv"
             if os.path.exists(bayes_file):
-                plot_bayesian_rope_evidence(bayes_file, output_path="results/plots/bayesian_rope_evidence.png")
+                plot_bayesian_rope_evidence(bayes_file, output_path="results/plots/bayesian_rope_evidence.pdf", metric_name="MCC")
+                plot_bayesian_rope_evidence(bayes_file, output_path="results/plots/bayesian_rope_evidence_auprc.pdf", metric_name="AUPRC")
             else:
-                plot_bayesian_rope_evidence(df, output_path="results/plots/bayesian_rope_evidence.png")
+                plot_bayesian_rope_evidence(df, output_path="results/plots/bayesian_rope_evidence.pdf", metric_name="MCC")
+                plot_bayesian_rope_evidence(df, output_path="results/plots/bayesian_rope_evidence_auprc.pdf", metric_name="AUPRC")
         except Exception as e:
             print(f"[Warning] Bayesian ROPE chart generation failed: {e}")
         
@@ -389,7 +415,26 @@ def main():
                 print("[Info] No results/ablation_results.csv found. Skipping ablation plots.")
         except Exception as e:
             print(f"[Warning] Ablation curve generation failed: {e}")
-        
+
+        print("\n--> 7. Generating advanced statistical plots (Pareto, CD Diagrams, Rank Heatmaps)...")
+        try:
+            plot_pareto_frontier(df, "results/plots")
+            plot_cd_diagram(df, "results/plots", metric='auroc')
+            for m in ('mcc', 'auprc'):
+                if m in df.columns and df[m].notna().any():
+                    plot_cd_diagram(df, "results/plots", metric=m)
+            for m in ('mcc', 'auroc', 'auprc'):
+                if m in df.columns and df[m].notna().any():
+                    plot_rank_heatmap(df, "results/plots", metric=m)
+        except Exception as e:
+            print(f"[Warning] Advanced statistical plotting failed: {e}")
+
+        print("\n--> 8. Generating Precision-Recall curves (Top KAN vs. Baselines per dataset)...")
+        try:
+            generate_precision_recall_curves("results/plots")
+        except Exception as e:
+            print(f"[Warning] Precision-Recall curve generation failed: {e}")
+
         print("\n" + "="*60)
         print("[SUCCESS] Full analytical pipeline finished without errors.")
         print("All tables and plots are located in the 'results/' folder.")

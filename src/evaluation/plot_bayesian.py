@@ -12,10 +12,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import seaborn as sns
+from src.evaluation.plot_style import apply_publication_style, save_pdf
 from typing import Union, Optional
 
 def plot_bayesian_rope_evidence(df_or_path: Union[str, pd.DataFrame], 
-                                output_path: str = "results/plots/bayesian_rope_evidence.png", 
+                                output_path: str = "results/plots/bayesian_rope_evidence.pdf", 
                                 rope_interval: float = 0.01,
                                 metric_name: str = "MCC") -> pd.DataFrame:
     """
@@ -30,15 +31,19 @@ def plot_bayesian_rope_evidence(df_or_path: Union[str, pd.DataFrame],
         pd.DataFrame: The processed Bayesian probability table used for plotting.
     """
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    sns.set_theme(style="whitegrid")
+    apply_publication_style("whitegrid")
     
     # 1. Resolve data source: either precomputed bayesian table or raw benchmark results
     if isinstance(df_or_path, str):
         if not os.path.exists(df_or_path):
             raise FileNotFoundError(f"Bayesian results file not found at: {df_or_path}")
         df_bayes = pd.read_csv(df_or_path)
+        if 'metric' in df_bayes.columns:
+            df_bayes = df_bayes[df_bayes['metric'].str.upper() == metric_name.upper()]
     elif isinstance(df_or_path, pd.DataFrame):
         df_bayes = df_or_path.copy()
+        if 'metric' in df_bayes.columns and 'prob_ROPE' in df_bayes.columns:
+            df_bayes = df_bayes[df_bayes['metric'].str.upper() == metric_name.upper()]
         # If passed raw benchmark results, compute Bayesian probabilities on the fly
         if 'prob_ROPE' not in df_bayes.columns:
             from src.evaluation.bayesian_stats import BayesianEvaluator
@@ -141,7 +146,7 @@ def plot_bayesian_rope_evidence(df_or_path: Union[str, pd.DataFrame],
     ax.grid(axis='y', visible=False)
     
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    output_path = save_pdf(output_path)
     plt.close()
     print(f"[Success] Saved Bayesian ROPE posterior chart to: {output_path}")
     

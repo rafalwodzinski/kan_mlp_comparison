@@ -1,6 +1,7 @@
 Model A (Baseline),Model B,Statistic,Unadjusted p-value,Winner,Holm-Bonferroni p-value,Significant,metric
-StandardMLP,FastKAN,9.0,0.46875,FastKAN,0.46875,False,MCC
-StandardMLP,FastKAN,3.0,0.078125,StandardMLP,0.078125,False,AUROC
-StandardMLP,FastKAN,9.0,0.46875,FastKAN,0.46875,False,F1_SCORE
-StandardMLP,FastKAN,13.0,0.9375,FastKAN,0.9375,False,BRIER_SCORE
-StandardMLP,FastKAN,0.0,0.015625,StandardMLP,0.015625,True,INFERENCE_TIME_PER_SAMPLE_MS
+StandardMLP,TabKAN,10.0,0.578125,StandardMLP,0.578125,False,MCC
+StandardMLP,TabKAN,13.0,0.9375,StandardMLP,0.9375,False,AUROC
+StandardMLP,TabKAN,12.0,0.8125,TabKAN,0.8125,False,AUPRC
+StandardMLP,TabKAN,8.0,0.375,TabKAN,0.375,False,F1_SCORE
+StandardMLP,TabKAN,10.0,0.578125,TabKAN,0.578125,False,BRIER_SCORE
+StandardMLP,TabKAN,0.0,0.015625,StandardMLP,0.015625,True,INFERENCE_TIME_PER_SAMPLE_MS

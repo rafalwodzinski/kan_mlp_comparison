@@ -24,7 +24,7 @@ class StandardMLP(BaseTabularModel):
         for h_dim in hidden_dims:
             layers.append(nn.Linear(in_features, h_dim))
             layers.append(nn.BatchNorm1d(h_dim))
-            layers.append(nn.GELU()) # GELU often performs better than ReLU
+            layers.append(nn.ReLU())
             layers.append(nn.Dropout(dropout_rate))
             in_features = h_dim
             

@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
+import joblib
 from sklearn.model_selection import RepeatedStratifiedKFold
 from torch.utils.data import DataLoader
 from typing import Dict, List, Any, Type
@@ -62,6 +63,17 @@ class CrossValidator:
             X_train_clean = preprocessor.fit_transform(X_train_raw)
             # We apply this knowledge to the test/validation set
             X_val_clean = preprocessor.transform(X_val_raw)
+
+            # Serialize the fitted preprocessor immediately after fit_transform so
+            # future inference (e.g., AUPRC re-computation) can reproduce the exact
+            # feature space without Dimension Mismatch errors.
+            preprocessor_save_dir = f"results/artifacts/{dataset_name}/{args.model_name}"
+            os.makedirs(preprocessor_save_dir, exist_ok=True)
+            preprocessor_path = os.path.join(
+                preprocessor_save_dir,
+                f"{dataset_name}_{args.model_name}_Repeat{repeat}_Fold{fold}_preprocessor.joblib"
+            )
+            joblib.dump(preprocessor, preprocessor_path)
             
             # Input dimension for the network (may change due to One-Hot Encoding)
             input_dim = X_train_clean.shape[1]
@@ -125,7 +137,9 @@ class CrossValidator:
                 model=model, 
                 optimizer=optimizer, 
                 criterion=criterion, 
-                device=torch.device(args.device), 
+                device=torch.device(args.device) if (hasattr(args, 'device') and args.device) else torch.device(
+                    "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
+                ),
                 is_binary=is_binary,
                 dataset_name=dataset_name,
                 model_name=args.model_name,
@@ -166,6 +180,7 @@ class CrossValidator:
             metrics['inference_time_per_sample_ms'] = metrics['inference_time_ms']
             metrics['inference_time_total_seconds'] = trainer.inference_time_total_seconds
             metrics['brier_score'] = metrics.get('brier_score', float('nan'))
+            metrics['auprc'] = metrics.get('auprc', float('nan'))
             
             all_fold_metrics.append(metrics)
 

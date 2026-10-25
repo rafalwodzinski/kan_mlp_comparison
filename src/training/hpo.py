@@ -26,7 +26,8 @@ class OptunaTuner:
         self.num_classes = num_classes
         self.input_dim = input_dim
         self.is_sklearn = issubclass(model_class, BaseEstimator)
-        self.device = torch.device(args.device if hasattr(args, 'device') else "cpu")
+        self.device = torch.device(args.device) if hasattr(args, 'device') else torch.device(
+            "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"))
 
     def objective(self, trial):
         # 1. Inner Split (80/20) to prevent leakage

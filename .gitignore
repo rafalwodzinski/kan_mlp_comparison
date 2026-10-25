@@ -56,3 +56,12 @@ scratch/
 sanity_check*.py
 verify_*.py
 temp_*.py
+# Manuscript-only helper scripts (LaTeX table export, reference checking, Overleaf packaging)
+scripts/verify_tex_references.py
+scripts/export_auprc_tables.py
+scripts/generate_figure_manifest.py
+
+# Trained model weights (large; regenerate by re-running the benchmark)
+*.pth
+*.joblib
+*.json

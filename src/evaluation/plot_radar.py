@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from src.evaluation.plot_style import apply_publication_style, save_pdf
 from typing import Optional, List, Dict
 
 def normalize_metrics_for_radar(df_grouped: pd.DataFrame, higher_is_better_flags: List[bool]) -> pd.DataFrame:
@@ -44,7 +45,7 @@ def normalize_metrics_for_radar(df_grouped: pd.DataFrame, higher_is_better_flags
     return df_norm
 
 def plot_radar_chart(df: pd.DataFrame, 
-                     output_path: str = "results/plots/radar_chart_tradeoffs.png", 
+                     output_path: str = "results/plots/radar_chart_tradeoffs.pdf", 
                      primary_models: Optional[List[str]] = None) -> pd.DataFrame:
     """
     Generates a high-resolution, publication-ready Radar (Spider) chart comparing models.
@@ -59,7 +60,7 @@ def plot_radar_chart(df: pd.DataFrame,
         pd.DataFrame: The normalized values used to generate the chart.
     """
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    sns.set_theme(style="white") # Clean background for polar plots
+    apply_publication_style("white") # Clean background for polar plots
     
     # 1. Filter models to primary targets of interest
     if primary_models is None:
@@ -106,7 +107,7 @@ def plot_radar_chart(df: pd.DataFrame,
     grouped_raw = df_filtered.groupby('model')[active_cols].mean()
     
     # Save raw averages table for reproducibility
-    raw_csv_path = output_path.replace(".png", "_raw_metrics.csv")
+    raw_csv_path = os.path.splitext(output_path)[0] + "_raw_metrics.csv"
     grouped_raw.to_csv(raw_csv_path)
     print(f"[Info] Saved raw model averages to: {raw_csv_path}")
     
@@ -114,7 +115,7 @@ def plot_radar_chart(df: pd.DataFrame,
     df_norm = normalize_metrics_for_radar(grouped_raw, flags)
     
     # Save normalized table
-    norm_csv_path = output_path.replace(".png", "_normalized_metrics.csv")
+    norm_csv_path = os.path.splitext(output_path)[0] + "_normalized_metrics.csv"
     df_norm.to_csv(norm_csv_path)
     print(f"[Info] Saved normalized 0-1 metrics to: {norm_csv_path}")
     
@@ -158,7 +159,7 @@ def plot_radar_chart(df: pd.DataFrame,
                frameon=True, facecolor='white', framealpha=0.9, edgecolor='#cccccc')
     
     plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    output_path = save_pdf(output_path)
     plt.close()
     print(f"[Success] Saved publication-ready radar chart to: {output_path}")
     

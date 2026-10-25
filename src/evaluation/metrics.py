@@ -2,7 +2,7 @@ import numpy as np
 from sklearn.metrics import (
     balanced_accuracy_score, precision_score,
     recall_score, f1_score, matthews_corrcoef, roc_auc_score,
-    brier_score_loss, confusion_matrix
+    brier_score_loss, confusion_matrix, average_precision_score
 )
 from sklearn.preprocessing import label_binarize
 from typing import Dict, Any, Tuple, Optional
@@ -88,6 +88,36 @@ class MedicalMetricsEvaluator:
         except Exception as e:
             logging.error(f"Brier Score calculation failed: {str(e)}. Setting to np.nan.")
             metrics["brier_score"] = np.nan
+
+        # AUPRC (Area Under Precision-Recall Curve) — critical for imbalanced datasets.
+        # Unlike AUROC, AUPRC is not insensitive to class imbalance and directly reflects
+        # the model's ability to retrieve the minority (positive) class.
+        try:
+            if self.is_binary:
+                if len(np.unique(y_true)) > 1:
+                    metrics["auprc"] = average_precision_score(y_true, y_prob)
+                else:
+                    metrics["auprc"] = np.nan
+            else:
+                # Macro-averaged AUPRC via one-vs-rest binarisation.
+                # This mirrors the AUROC multiclass strategy used above.
+                present_classes = np.unique(y_true)
+                if len(present_classes) > 1:
+                    all_classes = np.arange(y_prob.shape[1])
+                    y_true_bin = label_binarize(y_true, classes=all_classes)
+                    # Only compute for classes that are actually present in this fold
+                    auprc_per_class = []
+                    for c in present_classes:
+                        auprc_per_class.append(
+                            average_precision_score(y_true_bin[:, c], y_prob[:, c])
+                        )
+                    metrics["auprc"] = float(np.mean(auprc_per_class))
+                else:
+                    metrics["auprc"] = np.nan
+                    logging.warning("Only one class in y_true! AUPRC impossible, set to np.nan.")
+        except Exception as e:
+            logging.error(f"AUPRC calculation failed: {str(e)}. Setting to np.nan.")
+            metrics["auprc"] = np.nan
 
         return metrics
 

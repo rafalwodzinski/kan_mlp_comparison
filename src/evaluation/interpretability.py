@@ -10,7 +10,9 @@ class ModelInterpreter:
     Module responsible for extracting knowledge from trained models.
     Supports SHAP analysis for MLP and marginal function visualization for KAN.
     """
-    def __init__(self, model: nn.Module, device: torch.device):
+    def __init__(self, model: nn.Module, device: Optional[torch.device] = None):
+        if device is None:
+            device = torch.device("mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"))
         self.model = model.to(device)
         self.device = device
         self.model.eval()

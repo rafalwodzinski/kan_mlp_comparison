@@ -50,12 +50,9 @@ MODELS = {
 }
 
 def _detect_device() -> str:
-    """Detect best available compute device."""
-    if torch.cuda.is_available():
-        return "cuda"
-    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
+    """Detect best available compute device (MPS > CUDA > CPU)."""
+    device = torch.device("mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu"))
+    return device.type
 
 @dataclass
 class ExperimentArgs:

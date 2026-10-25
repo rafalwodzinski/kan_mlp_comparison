@@ -35,6 +35,13 @@ class TabularTrainer:
         repeat: int = 1,
         fold: int = 1
     ):
+        # Safe device resolution: fall back to best available if requested backend is missing
+        device = torch.device(device)
+        if device.type == "mps" and not torch.backends.mps.is_available():
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        elif device.type == "cuda" and not torch.cuda.is_available():
+            device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+
         self.is_sklearn = isinstance(model, BaseEstimator)
         if not self.is_sklearn:
             self.model = model.to(device)
@@ -264,8 +271,8 @@ class TabularTrainer:
         plt.ylabel("Loss")
         plt.legend()
         plt.grid(True)
-        plot_path = os.path.join(save_dir, f"{self.experiment_name}_learning_curve.png")
-        plt.savefig(plot_path)
+        plot_path = os.path.join(save_dir, f"{self.experiment_name}_learning_curve.pdf")
+        plt.savefig(plot_path, format='pdf', bbox_inches='tight')
         plt.close()
         
         # Target paths
