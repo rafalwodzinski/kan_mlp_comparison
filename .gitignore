@@ -1,11 +1,19 @@
+# ---------------------------------------------------------
+# Python
+# ---------------------------------------------------------
 venv/
 .venv/
 env/
+.env
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .ipynb_checkpoints/
+
+# ---------------------------------------------------------
+# Data & experiment tracking
+# ---------------------------------------------------------
 data/raw/*
 data/processed/*
 !data/raw/.gitkeep
@@ -15,7 +23,36 @@ wandb/
 *.log
 checkpoints/
 saved_models/
+
+# ---------------------------------------------------------
+# Editors / OS
+# ---------------------------------------------------------
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+
+# ---------------------------------------------------------
+# Manuscript, papers and literature (not part of the code release)
+# ---------------------------------------------------------
+manuscript/
+papers/
+literature/
+
+# ---------------------------------------------------------
+# Generated results: keep CSV data and PDF plots, drop the rest
+# ---------------------------------------------------------
+results/**/*.tex
+results/**/*.md
+*.png
+*.svg
+!results/**/*.csv
+!results/plots/*.pdf
+
+# ---------------------------------------------------------
+# Temporary / agent helper scripts
+# ---------------------------------------------------------
+scratch/
+sanity_check*.py
+verify_*.py
+temp_*.py
