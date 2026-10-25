@@ -1,4 +1,4 @@
-# Kolmogorov-Arnold Networks vs. Multi-Layer Perceptrons for Tabular Classification
+# Kolmogorov-Arnold Networks vs. Multi-Layer Perceptrons: A Rigorous Statistical Benchmark on Clinical Tabular Data
 
 This repository contains the replication code, experimental pipeline, and raw results for the comparative evaluation of Kolmogorov-Arnold Networks (KANs) and Multi-Layer Perceptrons (MLPs) on medical tabular data.
 
