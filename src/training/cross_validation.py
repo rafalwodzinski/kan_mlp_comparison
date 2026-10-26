@@ -67,7 +67,11 @@ class CrossValidator:
             # Serialize the fitted preprocessor immediately after fit_transform so
             # future inference (e.g., AUPRC re-computation) can reproduce the exact
             # feature space without Dimension Mismatch errors.
-            preprocessor_save_dir = f"results/artifacts/{dataset_name}/{args.model_name}"
+            train_frac = getattr(args, 'train_fraction', 1.0)
+            if train_frac < 1.0:
+                preprocessor_save_dir = f"results/artifacts_ablation/{dataset_name}/{args.model_name}/frac_{train_frac}"
+            else:
+                preprocessor_save_dir = f"results/artifacts/{dataset_name}/{args.model_name}"
             os.makedirs(preprocessor_save_dir, exist_ok=True)
             preprocessor_path = os.path.join(
                 preprocessor_save_dir,
@@ -156,7 +160,10 @@ class CrossValidator:
             metrics = trainer.evaluate(val_loader)
             
             # Save best_params to artifacts
-            save_dir = f"results/artifacts/{dataset_name}/{args.model_name}"
+            if train_frac < 1.0:
+                save_dir = f"results/artifacts_ablation/{dataset_name}/{args.model_name}/frac_{train_frac}"
+            else:
+                save_dir = f"results/artifacts/{dataset_name}/{args.model_name}"
             os.makedirs(save_dir, exist_ok=True)
             params_path = os.path.join(save_dir, f"{dataset_name}_{args.model_name}_Repeat{repeat}_Fold{fold}_best_params.json")
             with open(params_path, "w") as f:

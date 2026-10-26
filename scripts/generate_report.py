@@ -199,19 +199,33 @@ def generate_plots(df: pd.DataFrame):
     
     metrics_to_plot = ['mcc', 'auroc', 'auprc', 'f1_score', 'brier_score', 'inference_time_per_sample_ms', 'total_train_time_seconds']
     
+    # Seaborn's colorblind palette only contains 10 colors. With 11 models evaluated,
+    # the 11th model (RandomForest) cycled back to index 0, colliding with StandardMLP.
+    # We assign an explicit palette dictionary giving RandomForest a distinct forest green (#2ca02c).
+    unique_models = df['model'].unique().tolist()
+    cb_palette = sns.color_palette("colorblind", 10)
+    model_palette = {}
+    cb_idx = 0
+    for m in unique_models:
+        if m == "RandomForest":
+            model_palette[m] = "#2ca02c"  # Distinct Forest Green (consistent with PR curve plots)
+        else:
+            model_palette[m] = cb_palette[cb_idx % len(cb_palette)]
+            cb_idx += 1
+
     for metric in metrics_to_plot:
         if metric not in df.columns:
             continue
             
         fig, ax = plt.subplots(figsize=(14, 8))
         
-        # Plot considering accessibility palette (colorblind)
+        # Plot considering accessibility palette with distinct RandomForest hue
         sns.boxplot(
             x="dataset", 
             y=metric, 
             hue="model", 
             data=df, 
-            palette="colorblind",
+            palette=model_palette,
             ax=ax
         )
         

@@ -180,7 +180,11 @@ class TabularTrainer:
         start_time = time.time()
         
         # Final artifacts directory structure
-        save_dir = f"results/artifacts/{self.dataset_name}/{self.model_name}"
+        train_frac = run_params.get("train_fraction", 1.0) if run_params else 1.0
+        if train_frac < 1.0:
+            save_dir = f"results/artifacts_ablation/{self.dataset_name}/{self.model_name}/frac_{train_frac}"
+        else:
+            save_dir = f"results/artifacts/{self.dataset_name}/{self.model_name}"
         os.makedirs(save_dir, exist_ok=True)
         
         if self.is_sklearn:
