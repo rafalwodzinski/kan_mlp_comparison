@@ -23,8 +23,8 @@ def plot_ablation_curves(results_path: str = "results/ablation_results.csv", out
     
     apply_publication_style("whitegrid")
     
-    # Plot for AUROC, MCC, F1 Score, and Brier Score
-    for metric in ['auroc', 'mcc', 'f1_score', 'brier_score']:
+    # Plot for AUPRC, AUROC, MCC, F1 Score, and Brier Score
+    for metric in ['auprc', 'auroc', 'mcc', 'f1_score', 'brier_score']:
         if metric not in df.columns:
             continue
         
