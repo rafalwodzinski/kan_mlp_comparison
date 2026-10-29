@@ -169,8 +169,6 @@ def generate_precision_recall_curves(output_dir: str = "results/plots"):
         # Baseline: No-Skill classifier (prevalence line)
         ax.axhline(y=prevalence, color='navy', linestyle=':', label=f"No-Skill Baseline ({prevalence:.2f})")
 
-        display_ds = dataset_name.replace("_", " ").title()
-        ax.set_title(f"Precision-Recall Comparison: {display_ds}\nStandardMLP vs. TabKAN", fontsize=18, fontweight='bold', pad=15)
         ax.set_xlabel("Recall", fontsize=15, labelpad=10)
         ax.set_ylabel("Precision", fontsize=15, labelpad=10)
         ax.set_xlim(-0.02, 1.02)

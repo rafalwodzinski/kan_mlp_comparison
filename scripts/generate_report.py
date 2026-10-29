@@ -231,7 +231,7 @@ def generate_plots(df: pd.DataFrame):
         
         # Publication descriptors
         ax.set_title(f"Distribution of Metric {metric.upper()} in Cross Validation", fontweight='bold', pad=15)
-        ax.set_xlabel("Medical Dataset", labelpad=10)
+        ax.set_xlabel("")
         ax.set_ylabel(f"Value ({metric.upper()})", labelpad=10)
         
         # Adaptation of edges to readability of long medical diagnosis names
